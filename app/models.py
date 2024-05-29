@@ -167,3 +167,4 @@ class Favorite(db.Model):
             'property_id': self.property_id,
             'added_date': self.added_date.isoformat()
         }
+######
