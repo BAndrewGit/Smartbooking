@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from .models import User, Property, Room, Reservation, Review, Favorite, db
+from .models import User, Property, Room, Reservation, Review, Favorite, db, PropertyFacility
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 from functools import wraps
@@ -102,18 +102,13 @@ def get_properties():
     return jsonify([property_item.to_dict() for property_item in properties]), 200
 
 
-@routes_bp.route('/properties/<int:property_id>', methods=['GET'])
-@jwt_required()
-def get_property(property_id):
-    property_item = Property.query.get_or_404(property_id)
-    return jsonify(property_item.to_dict()), 200
-
-
-@routes_bp.route('/available_properties', methods=['GET'])
-def get_available_properties():
+@routes_bp.route('/filter_properties', methods=['GET'])
+def filter_properties():
     check_in = request.args.get('check_in')
     check_out = request.args.get('check_out')
     region = request.args.get('region', None)
+    price_max = request.args.get('price_max', None)
+    facilities = request.args.getlist('facilities', type=int)
 
     try:
         check_in_date = datetime.strptime(check_in, '%Y-%m-%d')
@@ -134,6 +129,16 @@ def get_available_properties():
 
     if region:
         properties_query = properties_query.filter(Property.region == region)
+
+    if price_max:
+        properties_query = properties_query.filter(Property.price <= price_max)
+
+    if facilities:
+        for facility in facilities:
+            properties_query = properties_query.join(PropertyFacility).filter(
+                PropertyFacility.facility_id == facility,
+                PropertyFacility.presence == True
+            )
 
     available_properties = properties_query.all()
 
