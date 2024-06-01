@@ -10,6 +10,12 @@ class User(db.Model):
     role = db.Column(db.String(50), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
+    # Db Relationships
+    properties = db.relationship('Property', backref='owner', cascade='all, delete-orphan')
+    reservations = db.relationship('Reservation', backref='user', cascade='all, delete-orphan')
+    reviews = db.relationship('Review', backref='user', cascade='all, delete-orphan')
+    favorites = db.relationship('Favorite', backref='user', cascade='all, delete-orphan')
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -40,6 +46,14 @@ class Property(db.Model):
     type = db.Column(db.String(50))
     description = db.Column(db.Text)
     images = db.Column(db.String(200))
+    cluster = db.Column(db.Integer)
+
+    # Db Relationships
+    rooms = db.relationship('Room', backref='property', cascade='all, delete-orphan')
+    reservations = db.relationship('Reservation', backref='property', cascade='all, delete-orphan')
+    reviews = db.relationship('Review', backref='property', cascade='all, delete-orphan')
+    favorites = db.relationship('Favorite', backref='property', cascade='all, delete-orphan')
+    facilities = db.relationship('PropertyFacility', backref='property', cascade='all, delete-orphan')
 
     def to_dict(self):
         return {
@@ -61,7 +75,8 @@ class Property(db.Model):
             'stars': self.stars,
             'type': self.type,
             'description': self.description,
-            'images': self.images
+            'images': self.images,
+            'cluster': self.cluster
         }
 
 
@@ -94,6 +109,9 @@ class Room(db.Model):
     property_id = db.Column(db.Integer, db.ForeignKey('property.id'), nullable=False)
     room_type = db.Column(db.String(50))
     persons = db.Column(db.Integer)
+
+    # Db Relationships
+    reservations = db.relationship('Reservation', backref='room', cascade='all, delete-orphan')
 
     def to_dict(self):
         return {

@@ -1,13 +1,15 @@
+from dotenv import load_dotenv
 from flask import Flask
 from flask_jwt_extended import JWTManager
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
-from .ai import ai_bp
 
 db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
+
+load_dotenv(dotenv_path='Keys.env')
 
 
 def create_app():
@@ -20,12 +22,13 @@ def create_app():
     CORS(app)
 
     with app.app_context():
-        from . import routes, models, auth
+        # Importurile sunt plasate aici pentru a evita importurile circulare
+        from . import routes, models, auth, ai
         db.create_all()
 
         # Înregistrare blueprint-uri
         app.register_blueprint(auth.auth_bp, url_prefix='/auth')
         app.register_blueprint(routes.routes_bp)
-        app.register_blueprint(ai_bp, url_prefix='/ai')
+        app.register_blueprint(ai.ai_bp, url_prefix='/ai')
 
     return app

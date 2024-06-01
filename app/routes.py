@@ -49,7 +49,6 @@ def update_current_user():
     user = User.query.get_or_404(user_id)
     user.name = data.get('name', user.name)
     user.email = data.get('email', user.email)
-    # Parola ar trebui gestionată separat, de exemplu printr-o funcție de schimbare a parolei
     db.session.commit()
     return jsonify({'message': 'User updated successfully'}), 200
 
@@ -386,41 +385,6 @@ def delete_review(review_id):
     db.session.delete(review)
     db.session.commit()
     return jsonify({'message': 'Review deleted successfully'}), 200
-
-
-# Favorite Management (User)
-@routes_bp.route('/favorites', methods=['POST'])
-@jwt_required()
-def create_favorite():
-    user_id = get_jwt_identity()
-    data = request.get_json()
-    new_favorite = Favorite(
-        user_id=user_id,
-        property_id=data['property_id']
-    )
-    db.session.add(new_favorite)
-    db.session.commit()
-    return jsonify({'message': 'Favorite created successfully'}), 201
-
-
-@routes_bp.route('/favorites', methods=['GET'])
-@jwt_required()
-def get_favorites():
-    user_id = get_jwt_identity()
-    favorites = Favorite.query.filter_by(user_id=user_id).all()
-    return jsonify([favorite.to_dict() for favorite in favorites]), 200
-
-
-@routes_bp.route('/favorites/<int:favorite_id>', methods=['DELETE'])
-@jwt_required()
-def delete_favorite(favorite_id):
-    user_id = get_jwt_identity()
-    favorite = Favorite.query.get_or_404(favorite_id)
-    if favorite.user_id != user_id:
-        return jsonify({'message': 'Unauthorized'}), 403
-    db.session.delete(favorite)
-    db.session.commit()
-    return jsonify({'message': 'Favorite deleted successfully'}), 200
 
 
 # Favorite Management (User)
