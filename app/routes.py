@@ -49,7 +49,6 @@ def update_current_user():
     user = User.query.get_or_404(user_id)
     user.name = data.get('name', user.name)
     user.email = data.get('email', user.email)
-    # Parola ar trebui gestionată separat, de exemplu printr-o funcție de schimbare a parolei
     db.session.commit()
     return jsonify({'message': 'User updated successfully'}), 200
 
