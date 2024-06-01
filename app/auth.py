@@ -1,8 +1,7 @@
 import bcrypt
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token
 from itsdangerous import URLSafeTimedSerializer
-from run import app
 from .models import User
 from . import db
 import smtplib
@@ -59,9 +58,6 @@ def login():
         return jsonify({'message': 'Invalid credentials'}), 401
 
 
-s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
-
-
 # Forgot password
 def send_email(to_email, token):
     from_email = 'your_email@gmail.com'
@@ -95,17 +91,16 @@ def forgot_password():
 
     user = User.query.filter_by(email=email).first()
     if user:
+        s = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
         token = s.dumps(email, salt='password-reset-salt')
-        # Send email with reset link
-        # Use an email service to send the email
-        send_email(email, token)  
+        send_email(email, token)
     return jsonify({'message': 'If your email is registered, you will receive a password reset link'}), 200
 
 
-# Reset password
 @auth_bp.route('/reset_password/<token>', methods=['POST'])
 def reset_password(token):
     try:
+        s = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
         email = s.loads(token, salt='password-reset-salt', max_age=3600)
     except Exception:
         return jsonify({'message': 'The reset link is invalid or has expired'}), 400
