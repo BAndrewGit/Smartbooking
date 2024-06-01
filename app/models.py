@@ -40,6 +40,7 @@ class Property(db.Model):
     type = db.Column(db.String(50))
     description = db.Column(db.Text)
     images = db.Column(db.String(200))
+    cluster = db.Column(db.Integer)
 
     def to_dict(self):
         return {
@@ -61,7 +62,8 @@ class Property(db.Model):
             'stars': self.stars,
             'type': self.type,
             'description': self.description,
-            'images': self.images
+            'images': self.images,
+            'cluster': self.cluster
         }
 
 
