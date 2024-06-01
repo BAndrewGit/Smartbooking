@@ -45,5 +45,29 @@ class RoomSchema(Schema):
 class ReservationSchema(Schema):
     id = fields.Int(dump_only=True)
     user_id = fields.Int(required=True)
+    room_id = fields.Int(required=True)
+    check_in_date = fields.DateTime(required=True)
+    check_out_date = fields.DateTime(required=True)
+    status = fields.Str(required=True)
+
+
+class ReviewSchema(Schema):
+    id = fields.Int(dump_only=True)
+    user_id = fields.Int(required=True)
     property_id = fields.Int(required=True)
-    check_in_date = fields
+    review_text = fields.Str(required=True)
+    rating_personal = fields.Float()
+    rating_facilities = fields.Float()
+    rating_cleanliness = fields.Float()
+    rating_comfort = fields.Float()
+    rating_value_for_money = fields.Float()
+    rating_location = fields.Float()
+    rating_wifi = fields.Float()
+    review_date = fields.DateTime(dump_only=True)
+
+
+class FavoriteSchema(Schema):
+    id = fields.Int(dump_only=True)
+    user_id = fields.Int(required=True)
+    property_id = fields.Int(required=True)
+    added_date = fields.DateTime(dump_only=True)
