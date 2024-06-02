@@ -1,4 +1,4 @@
-from marshmallow import Schema, fields
+from marshmallow import Schema, fields, EXCLUDE
 
 
 class UserSchema(Schema):
@@ -6,6 +6,13 @@ class UserSchema(Schema):
     name = fields.Str(required=True)
     email = fields.Email(required=True)
     created_at = fields.DateTime(dump_only=True)
+    properties = fields.List(fields.Nested(lambda: PropertySchema(exclude=('owner',))))
+    reservations = fields.List(fields.Nested(lambda: ReservationSchema(exclude=('user',))))
+    reviews = fields.List(fields.Nested(lambda: ReviewSchema(exclude=('user',))))
+    favorites = fields.List(fields.Nested(lambda: FavoriteSchema(exclude=('user',))))
+
+    class Meta:
+        unknown = EXCLUDE
 
 
 class PropertySchema(Schema):
@@ -28,11 +35,33 @@ class PropertySchema(Schema):
     type = fields.Str(required=True)
     description = fields.Str()
     images = fields.Str()
+    cluster = fields.Int()
+    rooms = fields.List(fields.Nested(lambda: RoomSchema(exclude=('property',))))
+    reservations = fields.List(fields.Nested(lambda: ReservationSchema(exclude=('property',))))
+    reviews = fields.List(fields.Nested(lambda: ReviewSchema(exclude=('property',))))
+    favorites = fields.List(fields.Nested(lambda: FavoriteSchema(exclude=('property',))))
+    facilities = fields.List(fields.Nested(lambda: PropertyFacilitySchema(exclude=('property',))))
+
+    class Meta:
+        unknown = EXCLUDE
 
 
 class FacilitySchema(Schema):
     id = fields.Int(dump_only=True)
     name = fields.Str(required=True)
+
+    class Meta:
+        unknown = EXCLUDE
+
+
+class PropertyFacilitySchema(Schema):
+    property_id = fields.Int(required=True)
+    facility_id = fields.Int(required=True)
+    presence = fields.Bool(required=True)
+    facility = fields.Nested(lambda: FacilitySchema(only=('id', 'name')))
+
+    class Meta:
+        unknown = EXCLUDE
 
 
 class RoomSchema(Schema):
@@ -40,6 +69,10 @@ class RoomSchema(Schema):
     property_id = fields.Int(required=True)
     room_type = fields.Str()
     persons = fields.Int()
+    reservations = fields.List(fields.Nested(lambda: ReservationSchema(exclude=('room',))))
+
+    class Meta:
+        unknown = EXCLUDE
 
 
 class ReservationSchema(Schema):
@@ -49,6 +82,12 @@ class ReservationSchema(Schema):
     check_in_date = fields.DateTime(required=True)
     check_out_date = fields.DateTime(required=True)
     status = fields.Str(required=True)
+    user = fields.Nested(lambda: UserSchema(only=('id', 'name', 'email')))
+    room = fields.Nested(lambda: RoomSchema(only=('id', 'room_type', 'persons')))
+    property = fields.Nested(lambda: PropertySchema(only=('id', 'name', 'address')))
+
+    class Meta:
+        unknown = EXCLUDE
 
 
 class ReviewSchema(Schema):
@@ -64,6 +103,11 @@ class ReviewSchema(Schema):
     rating_location = fields.Float()
     rating_wifi = fields.Float()
     review_date = fields.DateTime(dump_only=True)
+    user = fields.Nested(lambda: UserSchema(only=('id', 'name', 'email')))
+    property = fields.Nested(lambda: PropertySchema(only=('id', 'name', 'address')))
+
+    class Meta:
+        unknown = EXCLUDE
 
 
 class FavoriteSchema(Schema):
@@ -71,6 +115,11 @@ class FavoriteSchema(Schema):
     user_id = fields.Int(required=True)
     property_id = fields.Int(required=True)
     added_date = fields.DateTime(dump_only=True)
+    user = fields.Nested(lambda: UserSchema(only=('id', 'name', 'email')))
+    property = fields.Nested(lambda: PropertySchema(only=('id', 'name', 'address')))
+
+    class Meta:
+        unknown = EXCLUDE
 
 
 class PaymentSchema(Schema):
@@ -81,3 +130,7 @@ class PaymentSchema(Schema):
     status = fields.Str(required=True)
     payment_intent_id = fields.Str(required=True)
     created_at = fields.DateTime(dump_only=True)
+    user = fields.Nested(lambda: UserSchema(only=('id', 'name', 'email')))
+
+    class Meta:
+        unknown = EXCLUDE

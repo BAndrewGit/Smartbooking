@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from .models import User, Property, Room, Reservation, Review, Favorite, db, PropertyFacility
+from .models import User, Property, Room, Reservation, Review, Favorite, db, Facility, PropertyFacility
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 from functools import wraps
@@ -17,6 +17,7 @@ def check_property_owner(f):
         if property_item.owner_id != user_id:
             return jsonify({'message': 'Unauthorized'}), 403
         return f(*args, **kwargs)
+
     return decorated_function
 
 
@@ -29,6 +30,7 @@ def check_review_owner(f):
         if review.user_id != user_id:
             return jsonify({'message': 'Unauthorized'}), 403
         return f(*args, **kwargs)
+
     return decorated_function
 
 
@@ -91,6 +93,17 @@ def create_property():
     )
     db.session.add(new_property)
     db.session.commit()
+
+    facilities = data.get('facilities', [])
+    for facility_id in facilities:
+        property_facility = PropertyFacility(
+            property_id=new_property.id,
+            facility_id=facility_id,
+            presence=True
+        )
+        db.session.add(property_facility)
+    db.session.commit()
+
     return jsonify({'message': 'Property created successfully'}), 201
 
 
@@ -170,6 +183,18 @@ def update_property(property_id):
     property_item.description = data['description']
     property_item.images = data['images']
     db.session.commit()
+
+    facilities = data.get('facilities', [])
+    PropertyFacility.query.filter_by(property_id=property_id).delete()
+    for facility_id in facilities:
+        property_facility = PropertyFacility(
+            property_id=property_item.id,
+            facility_id=facility_id,
+            presence=True
+        )
+        db.session.add(property_facility)
+    db.session.commit()
+
     return jsonify({'message': 'Property updated successfully'}), 200
 
 
@@ -419,3 +444,35 @@ def delete_favorite(favorite_id):
     db.session.delete(favorite)
     db.session.commit()
     return jsonify({'message': 'Favorite deleted successfully'}), 200
+
+
+# Facility Management (Admin)
+@routes_bp.route('/facilities', methods=['GET'])
+def get_facilities():
+    facilities = Facility.query.all()
+    return jsonify([facility.to_dict() for facility in facilities]), 200
+
+
+@routes_bp.route('/property_facilities', methods=['POST'])
+@jwt_required()
+@check_property_owner
+def add_facility_to_property():
+    data = request.get_json()
+    property_id = data['property_id']
+    facility_id = data['facility_id']
+    presence = data.get('presence', True)
+
+    property_facility = PropertyFacility(
+        property_id=property_id,
+        facility_id=facility_id,
+        presence=presence
+    )
+    db.session.add(property_facility)
+    db.session.commit()
+    return jsonify({'message': 'Facility added to property successfully'}), 201
+
+
+@routes_bp.route('/property_facilities/<int:property_id>', methods=['GET'])
+def get_facilities_for_property(property_id):
+    facilities = PropertyFacility.query.filter_by(property_id=property_id).all()
+    return jsonify([facility.to_dict() for facility in facilities]), 200
