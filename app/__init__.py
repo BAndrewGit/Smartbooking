@@ -23,12 +23,13 @@ def create_app():
 
     with app.app_context():
         # Importurile sunt plasate aici pentru a evita importurile circulare
-        from . import routes, models, auth, ai
+        from . import routes, models, auth, ai, payments
         db.create_all()
 
         # Înregistrare blueprint-uri
         app.register_blueprint(auth.auth_bp, url_prefix='/auth')
         app.register_blueprint(routes.routes_bp)
         app.register_blueprint(ai.ai_bp, url_prefix='/ai')
+        app.register_blueprint(payments.payments_bp, url_prefix='/payments')
 
     return app

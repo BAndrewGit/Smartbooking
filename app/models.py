@@ -185,3 +185,24 @@ class Favorite(db.Model):
             'property_id': self.property_id,
             'added_date': self.added_date.isoformat()
         }
+
+
+class Payment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    currency = db.Column(db.String(10), nullable=False)
+    status = db.Column(db.String(20), nullable=False)
+    payment_intent_id = db.Column(db.String(50), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'amount': self.amount,
+            'currency': self.currency,
+            'status': self.status,
+            'payment_intent_id': self.payment_intent_id,
+            'created_at': self.created_at.isoformat()
+        }
