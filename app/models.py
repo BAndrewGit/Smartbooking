@@ -125,6 +125,7 @@ class Room(db.Model):
 class Reservation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    property_id = db.Column(db.Integer, db.ForeignKey('property.id'), nullable=False)
     room_id = db.Column(db.Integer, db.ForeignKey('room.id'), nullable=False)
     check_in_date = db.Column(db.DateTime, nullable=False)
     check_out_date = db.Column(db.DateTime, nullable=False)
@@ -134,6 +135,7 @@ class Reservation(db.Model):
         return {
             'id': self.id,
             'user_id': self.user_id,
+            'property_id': self.property_id,
             'room_id': self.room_id,
             'check_in_date': self.check_in_date.isoformat(),
             'check_out_date': self.check_out_date.isoformat(),

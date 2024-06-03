@@ -1,12 +1,13 @@
 import pandas as pd
 import numpy as np
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from sklearn.model_selection import train_test_split
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.cluster import KMeans
+from .models import Favorite, Property
 
 ai_bp = Blueprint('ai', __name__)
 
@@ -76,13 +77,14 @@ features_test_scaled = scaler.transform(features_test_optimized)
 model_rf_optimized = RandomForestRegressor(random_state=0)
 
 # Antrenarea modelului pe datele optimizate
-model_rf_optimized.fit(features_train_optimized, target_train_optimized.to_numpy())
+model_rf_optimized.fit(features_train_scaled, target_train_optimized.to_numpy())
 
 # Modelul de recomandare (KMeans)
 kmeans = KMeans(n_clusters=5, n_init='auto')
 kmeans.fit(df[['price', 'Nota Personal', 'Nota Facilităţi', 'Nota Curăţenie', 'Nota Confort',
                'Nota Raport calitate/preţ', 'Nota Locaţie', 'Nota WiFi gratuit']])
 df['cluster'] = kmeans.labels_
+
 
 @ai_bp.route('/predict_price', methods=['POST'])
 @jwt_required()
@@ -97,15 +99,24 @@ def predict_price():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 @ai_bp.route('/recommend_properties', methods=['POST'])
 @jwt_required()
 def recommend_properties():
     try:
+        user_id = get_jwt_identity()
+
+        # Obținem lista de cazări favorite ale utilizatorului curent
+        favorite_properties = Favorite.query.filter_by(user_id=user_id).all()
+        favorite_property_ids = [favorite.property_id for favorite in favorite_properties]
+
+        # Obținem detaliile proprietăților favorite
+        preferred_accommodations = [Property.query.get(fav_id).name for fav_id in favorite_property_ids]
+
         data = request.get_json()
         user_ratings = data['user_ratings']
-        preferred_accommodations = data['preferred_accommodations']
-        max_budget = data['max_budget']
-        preferred_region = data['preferred_region']
+        max_budget = data.get('max_budget')
+        preferred_region = data.get('preferred_region')
 
         # Calculăm scorul de preferință pentru fiecare hotel
         for index, row in df.iterrows():
@@ -115,22 +126,28 @@ def recommend_properties():
             df.loc[index, 'preference_score'] = preference_score
 
         # Identificăm clusterul preferat
-        preferred_cluster = df[df['name'].isin(preferred_accommodations)]['cluster'].mode()[0]
+        if preferred_accommodations:
+            preferred_cluster = df[df['name'].isin(preferred_accommodations)]['cluster'].mode()[0]
 
-        # Filtrăm DataFrame-ul pentru a include doar hotelurile din clusterul preferat
-        df_filtered = df[df['cluster'] == preferred_cluster]
+            # Filtrăm DataFrame-ul pentru a include doar hotelurile din clusterul preferat
+            df_filtered = df[df['cluster'] == preferred_cluster]
+        else:
+            df_filtered = df.copy()
 
         # Aplicăm filtrele
-        df_filtered = df_filtered[df_filtered['price'] <= max_budget]
-        df_filtered = df_filtered[df_filtered['address/region'] == preferred_region]
+        if max_budget:
+            df_filtered = df_filtered[df_filtered['price'] <= max_budget]
+        if preferred_region:
+            df_filtered = df_filtered[df_filtered['address/region'] == preferred_region]
 
         # Identificăm facilitățile care sunt disponibile la cazări preferate
-        preferred_facilities = df[df['name'].isin(preferred_accommodations)].iloc[:, -37:].sum(axis=0)
+        if preferred_accommodations:
+            preferred_facilities = df[df['name'].isin(preferred_accommodations)].iloc[:, -37:].sum(axis=0)
 
-        # Calculăm scorul de potrivire a facilităților pentru fiecare hotel
-        for index, row in df_filtered.iterrows():
-            matching_facilities_score = sum(row[-37:] * preferred_facilities)
-            df_filtered.loc[index, 'preference_score'] += matching_facilities_score
+            # Calculăm scorul de potrivire a facilităților pentru fiecare hotel
+            for index, row in df_filtered.iterrows():
+                matching_facilities_score = sum(row[-37:] * preferred_facilities)
+                df_filtered.loc[index, 'preference_score'] += matching_facilities_score
 
         # Afișăm primele 5 hoteluri cu cel mai mare scor de preferință
         recommendations = df_filtered.nlargest(5, 'preference_score')
@@ -139,8 +156,7 @@ def recommend_properties():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 def find_properties_by_cluster(cluster_id):
-    # Funcție fictivă care returnează o listă de proprietăți bazată pe cluster
-    # Aceasta funcție trebuie să fie implementată pentru a returna proprietățile din baza de date
     properties = df[df['cluster'] == cluster_id]
     return properties.to_dict(orient='records')
