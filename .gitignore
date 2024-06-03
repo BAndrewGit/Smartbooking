@@ -9,6 +9,7 @@ build/
 eggs/
 parts/
 var/
+migrations/
 *.log
 *.pot
 *.pyc

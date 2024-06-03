@@ -16,10 +16,13 @@ facilities = [
     'Canale prin cablu', 'aer condiţionat', 'Masă', 'Suport de haine', 'Cadă sau duş', 'Frigider'
 ]
 
+# Șterge toate facilitățile existente
+db.session.query(Facility).delete()
+
+# Adaugă facilitățile predefinite
 for facility_name in facilities:
-    if not Facility.query.filter_by(name=facility_name).first():
-        new_facility = Facility(name=facility_name)
-        db.session.add(new_facility)
+    new_facility = Facility(name=facility_name)
+    db.session.add(new_facility)
 
 db.session.commit()
 print("Facilitățile predefinite au fost adăugate în baza de date.")
