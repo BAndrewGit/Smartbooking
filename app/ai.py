@@ -87,7 +87,6 @@ df['cluster'] = kmeans.labels_
 
 
 @ai_bp.route('/predict_price', methods=['POST'])
-@jwt_required()
 def predict_price():
     try:
         data = request.get_json()

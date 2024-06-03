@@ -367,14 +367,12 @@ def create_review():
 
 
 @routes_bp.route('/reviews', methods=['GET'])
-@jwt_required()
 def get_reviews():
     reviews = Review.query.all()
     return jsonify([review.to_dict() for review in reviews]), 200
 
 
 @routes_bp.route('/reviews/<int:review_id>', methods=['GET'])
-@jwt_required()
 def get_review(review_id):
     review = Review.query.get_or_404(review_id)
     return jsonify(review.to_dict()), 200
