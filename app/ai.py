@@ -7,7 +7,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.cluster import KMeans
-from .models import Favorite, Property
+from .models import Favorite, Property, Room, db
 
 ai_bp = Blueprint('ai', __name__)
 
@@ -86,15 +86,57 @@ kmeans.fit(df[['price', 'Nota Personal', 'Nota Facilităţi', 'Nota Curăţenie'
 df['cluster'] = kmeans.labels_
 
 
-@ai_bp.route('/predict_price', methods=['POST'])
-def predict_price():
+def calculate_price_rating(predicted_price, actual_price, mae_half):
+    if actual_price < predicted_price - 2 * mae_half:
+        return "Very good price"
+    elif predicted_price - 2 * mae_half <= actual_price < predicted_price - mae_half:
+        return "Good price"
+    elif predicted_price - mae_half <= actual_price <= predicted_price + mae_half:
+        return "Fair price"
+    elif predicted_price + mae_half < actual_price <= predicted_price + 2 * mae_half:
+        return "Increased price"
+    else:
+        return "High price"
+
+
+@ai_bp.route('/rooms/<int:room_id>/predict_price', methods=['POST'])
+@jwt_required()
+def predict_price_for_room(room_id):
     try:
-        data = request.get_json()
-        input_features = np.array([data['features']])
-        input_features = imputer.transform(input_features)  # Imputarea valorilor lipsă
-        input_features = scaler.transform(input_features)  # Normalizare și scalare
-        predicted_price = model_rf_optimized.predict(input_features)
-        return jsonify({'predicted_price': predicted_price[0]}), 200
+        room = Room.query.get_or_404(room_id)
+        property_item = Property.query.get_or_404(room.property_id)
+
+        input_data = {
+            'rooms/0/persons': room.persons,
+            'stars': property_item.stars,
+            f'type_{property_item.type.value}': True,
+            f'address/region_{property_item.region}': True,
+            f'rooms/0/roomType_{room.room_type}': True
+        }
+
+        for facility in room.facilities:
+            input_data[facility.facility.name] = True
+
+        for column in selected_columns:
+            if column not in input_data:
+                input_data[column] = False
+
+        input_features = np.array([input_data[col] for col in selected_columns]).reshape(1, -1)
+        input_features = imputer.transform(input_features)
+        input_features = scaler.transform(input_features)
+        predicted_price = model_rf_optimized.predict(input_features)[0]
+
+        mae_half = 36.40
+        actual_price = room.price
+        price_rating = calculate_price_rating(predicted_price, actual_price, mae_half)
+
+        room.price_rating = price_rating
+        db.session.commit()
+
+        return jsonify({
+            'price_rating': price_rating
+        }), 200
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

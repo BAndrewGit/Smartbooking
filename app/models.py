@@ -1,6 +1,6 @@
-from enum import Enum
 from . import db
 from datetime import datetime, timezone
+from enum import Enum
 
 
 class PropertyType(Enum):
@@ -35,7 +35,6 @@ class User(db.Model):
     role = db.Column(db.String(50), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
-    # Db Relationships
     properties = db.relationship('Property', backref='owner', cascade='all, delete-orphan')
     reservations = db.relationship('Reservation', backref='user', cascade='all, delete-orphan')
     reviews = db.relationship('Review', backref='user', cascade='all, delete-orphan')
@@ -71,12 +70,10 @@ class Property(db.Model):
     images = db.Column(db.String(200))
     cluster = db.Column(db.Integer)
 
-    # Db Relationships
     rooms = db.relationship('Room', backref='property', cascade='all, delete-orphan')
     reservations = db.relationship('Reservation', backref='property', cascade='all, delete-orphan')
     reviews = db.relationship('Review', backref='property', cascade='all, delete-orphan')
     favorites = db.relationship('Favorite', backref='property', cascade='all, delete-orphan')
-    facilities = db.relationship('PropertyFacility', backref='property', cascade='all, delete-orphan')
 
     def to_dict(self):
         return {
@@ -112,19 +109,6 @@ class Facility(db.Model):
         }
 
 
-class PropertyFacility(db.Model):
-    property_id = db.Column(db.Integer, db.ForeignKey('property.id'), primary_key=True)
-    facility_id = db.Column(db.Integer, db.ForeignKey('facility.id'), primary_key=True)
-    presence = db.Column(db.Boolean, default=True)
-
-    def to_dict(self):
-        return {
-            'property_id': self.property_id,
-            'facility_id': self.facility_id,
-            'presence': self.presence
-        }
-
-
 class Room(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     property_id = db.Column(db.Integer, db.ForeignKey('property.id'), nullable=False)
@@ -132,9 +116,10 @@ class Room(db.Model):
     persons = db.Column(db.Integer)
     price = db.Column(db.Float)
     currency = db.Column(db.String(10))
+    price_rating = db.Column(db.String(20))
 
-    # Db Relationships
     reservations = db.relationship('Reservation', backref='room', cascade='all, delete-orphan')
+    facilities = db.relationship('RoomFacility', backref='room', cascade='all, delete-orphan')
 
     def to_dict(self):
         return {
@@ -143,7 +128,22 @@ class Room(db.Model):
             'room_type': self.room_type,
             'persons': self.persons,
             'price': self.price,
-            'currency': self.currency
+            'currency': self.currency,
+            'price_rating': self.price_rating,
+            'facilities': [facility.to_dict() for facility in self.facilities]
+        }
+
+
+class RoomFacility(db.Model):
+    room_id = db.Column(db.Integer, db.ForeignKey('room.id'), primary_key=True)
+    facility_id = db.Column(db.Integer, db.ForeignKey('facility.id'), primary_key=True)
+    presence = db.Column(db.Boolean, default=True)
+
+    def to_dict(self):
+        return {
+            'room_id': self.room_id,
+            'facility_id': self.facility_id,
+            'presence': self.presence
         }
 
 

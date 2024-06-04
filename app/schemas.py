@@ -38,7 +38,6 @@ class PropertySchema(Schema):
     reservations = fields.List(fields.Nested(lambda: ReservationSchema(exclude=('property',))))
     reviews = fields.List(fields.Nested(lambda: ReviewSchema(exclude=('property',))))
     favorites = fields.List(fields.Nested(lambda: FavoriteSchema(exclude=('property',))))
-    facilities = fields.List(fields.Nested(lambda: PropertyFacilitySchema(exclude=('property',))))
 
     class Meta:
         unknown = EXCLUDE
@@ -52,8 +51,8 @@ class FacilitySchema(Schema):
         unknown = EXCLUDE
 
 
-class PropertyFacilitySchema(Schema):
-    property_id = fields.Int(required=True)
+class RoomFacilitySchema(Schema):
+    room_id = fields.Int(required=True)
     facility_id = fields.Int(required=True)
     presence = fields.Bool(required=True)
     facility = fields.Nested(lambda: FacilitySchema(only=('id', 'name')))
@@ -69,7 +68,9 @@ class RoomSchema(Schema):
     persons = fields.Int()
     price = fields.Float(required=True)
     currency = fields.Str(required=True)
+    price_rating = fields.Str()
     reservations = fields.List(fields.Nested(lambda: ReservationSchema(exclude=('room',))))
+    facilities = fields.List(fields.Nested(lambda: RoomFacilitySchema(exclude=('room',))))
 
     class Meta:
         unknown = EXCLUDE

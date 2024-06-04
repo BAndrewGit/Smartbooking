@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from .models import User, Property, Room, Reservation, Review, Favorite, db, Facility, PropertyFacility
+from .models import User, Property, Room, Reservation, Review, Favorite, db, Facility, RoomFacility
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 from functools import wraps
@@ -92,16 +92,6 @@ def create_property():
     db.session.add(new_property)
     db.session.commit()
 
-    facilities = data.get('facilities', [])
-    for facility_id in facilities:
-        property_facility = PropertyFacility(
-            property_id=new_property.id,
-            facility_id=facility_id,
-            presence=True
-        )
-        db.session.add(property_facility)
-    db.session.commit()
-
     return jsonify({'message': 'Property created successfully'}), 201
 
 
@@ -149,15 +139,12 @@ def filter_properties():
 
     if facilities:
         for facility in facilities:
-            properties_query = properties_query.join(PropertyFacility).filter(
-                PropertyFacility.facility_id == facility,
-                PropertyFacility.presence == True
+            properties_query = properties_query.join(RoomFacility).filter(
+                RoomFacility.facility_id == facility,
+                RoomFacility.presence == True
             )
 
     available_properties = properties_query.all()
-
-    if not available_properties:
-        return jsonify({'message': 'No properties found matching the criteria'}), 200
 
     return jsonify([property_item.to_dict() for property_item in available_properties]), 200
 
@@ -185,17 +172,6 @@ def update_property(property_id):
     property_item.type = data['type']
     property_item.description = data['description']
     property_item.images = data['images']
-    db.session.commit()
-
-    facilities = data.get('facilities', [])
-    PropertyFacility.query.filter_by(property_id=property_id).delete()
-    for facility_id in facilities:
-        property_facility = PropertyFacility(
-            property_id=property_item.id,
-            facility_id=facility_id,
-            presence=True
-        )
-        db.session.add(property_facility)
     db.session.commit()
 
     return jsonify({'message': 'Property updated successfully'}), 200
@@ -231,6 +207,7 @@ def create_room():
     )
     db.session.add(new_room)
     db.session.commit()
+
     return jsonify({'message': 'Room created successfully'}), 201
 
 
@@ -276,6 +253,35 @@ def delete_room(room_id):
     db.session.delete(room)
     db.session.commit()
     return jsonify({'message': 'Room deleted successfully'}), 200
+
+
+# Room Facility Management (Admin)
+@routes_bp.route('/room_facilities', methods=['POST'])
+@jwt_required()
+def add_facility_to_room():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    room = Room.query.get_or_404(data['room_id'])
+    property_item = Property.query.get_or_404(room.property_id)
+    if property_item.owner_id != user_id:
+        return jsonify({'message': 'Unauthorized'}), 403
+
+    facility = RoomFacility(
+        room_id=room.id,
+        facility_id=data['facility_id'],
+        presence=data.get('presence', True)
+        )
+    db.session.add(facility)
+    db.session.commit()
+
+    return jsonify({'message': 'Facility added to room successfully'}), 201
+
+
+@routes_bp.route('/room_facilities/<int:room_id>', methods=['GET'])
+@jwt_required()
+def get_facilities_for_room(room_id):
+    facilities = RoomFacility.query.filter_by(room_id=room_id).all()
+    return jsonify([facility.to_dict() for facility in facilities]), 200
 
 
 # Reservation Management (Admin and User)
@@ -455,29 +461,4 @@ def delete_favorite(favorite_id):
 @routes_bp.route('/facilities', methods=['GET'])
 def get_facilities():
     facilities = Facility.query.all()
-    return jsonify([facility.to_dict() for facility in facilities]), 200
-
-
-@routes_bp.route('/property_facilities', methods=['POST'])
-@jwt_required()
-@check_property_owner
-def add_facility_to_property():
-    data = request.get_json()
-    property_id = data['property_id']
-    facility_id = data['facility_id']
-    presence = data.get('presence', True)
-
-    property_facility = PropertyFacility(
-        property_id=property_id,
-        facility_id=facility_id,
-        presence=presence
-    )
-    db.session.add(property_facility)
-    db.session.commit()
-    return jsonify({'message': 'Facility added to property successfully'}), 201
-
-
-@routes_bp.route('/property_facilities/<int:property_id>', methods=['GET'])
-def get_facilities_for_property(property_id):
-    facilities = PropertyFacility.query.filter_by(property_id=property_id).all()
     return jsonify([facility.to_dict() for facility in facilities]), 200
