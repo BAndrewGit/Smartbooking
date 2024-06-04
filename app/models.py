@@ -1,5 +1,30 @@
+from enum import Enum
 from . import db
 from datetime import datetime, timezone
+
+
+class PropertyType(Enum):
+    HOTEL = "hotel"
+    APARTMENT = "apartment"
+    GUEST_HOUSE = "guest_house"
+    BED_AND_BREAKFAST = "bed_and_breakfast"
+    APARTHOTEL = "aparthotel"
+    HOLIDAY_HOME = "holiday_home"
+    LODGE = "lodge"
+    CAMPING = "camping"
+    HOMESTAY = "homestay"
+    VILLA = "villa"
+    COUNTRY_HOUSE = "country_house"
+    RESORT = "resort"
+    CHALET = "chalet"
+    MOTEL = "motel"
+    HOLIDAY_PARK = "holiday_park"
+    CAPSULE_HOTEL = "capsule_hotel"
+    INN = "inn"
+    BOAT = "boat"
+    FARM_HOLIDAY = "farm_holiday"
+    HOSTEL = "hostel"
+    CAMP = "camp"
 
 
 class User(db.Model):
@@ -38,12 +63,10 @@ class Property(db.Model):
     longitude = db.Column(db.Float)
     check_in = db.Column(db.String(20))
     check_out = db.Column(db.String(20))
-    price = db.Column(db.Float)
-    currency = db.Column(db.String(10))
     num_reviews = db.Column(db.Integer)
     availability = db.Column(db.Boolean, default=True)
     stars = db.Column(db.Integer)
-    type = db.Column(db.String(50))
+    type = db.Column(db.Enum(PropertyType), nullable=False)
     description = db.Column(db.Text)
     images = db.Column(db.String(200))
     cluster = db.Column(db.Integer)
@@ -68,12 +91,10 @@ class Property(db.Model):
             'longitude': self.longitude,
             'check_in': self.check_in,
             'check_out': self.check_out,
-            'price': self.price,
-            'currency': self.currency,
             'num_reviews': self.num_reviews,
             'availability': self.availability,
             'stars': self.stars,
-            'type': self.type,
+            'type': self.type.value,
             'description': self.description,
             'images': self.images,
             'cluster': self.cluster
@@ -109,6 +130,8 @@ class Room(db.Model):
     property_id = db.Column(db.Integer, db.ForeignKey('property.id'), nullable=False)
     room_type = db.Column(db.String(50))
     persons = db.Column(db.Integer)
+    price = db.Column(db.Float)
+    currency = db.Column(db.String(10))
 
     # Db Relationships
     reservations = db.relationship('Reservation', backref='room', cascade='all, delete-orphan')
@@ -118,7 +141,9 @@ class Room(db.Model):
             'id': self.id,
             'property_id': self.property_id,
             'room_type': self.room_type,
-            'persons': self.persons
+            'persons': self.persons,
+            'price': self.price,
+            'currency': self.currency
         }
 
 

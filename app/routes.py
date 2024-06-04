@@ -82,8 +82,6 @@ def create_property():
         longitude=data['longitude'],
         check_in=data['check_in'],
         check_out=data['check_out'],
-        price=data['price'],
-        currency=data['currency'],
         num_reviews=data['num_reviews'],
         availability=data['availability'],
         stars=data['stars'],
@@ -119,7 +117,8 @@ def filter_properties():
     check_in = request.args.get('check_in')
     check_out = request.args.get('check_out')
     region = request.args.get('region', None)
-    price_max = request.args.get('price_max', None)
+    price_max = request.args.get('price_max', type=float)  # Am adăugat tipul float
+    num_persons = request.args.get('num_persons', type=int)  # Parametru nou
     facilities = request.args.getlist('facilities', type=int)
 
     try:
@@ -128,13 +127,13 @@ def filter_properties():
     except ValueError:
         return jsonify({'message': 'Invalid date format. Use YYYY-MM-DD.'}), 400
 
-    # Filtram camerele rezervate în perioada specificată
+    # Filtrare camere rezervate în perioada specificată
     reserved_rooms = db.session.query(Reservation.room_id).filter(
         Reservation.check_in_date < check_out_date,
         Reservation.check_out_date > check_in_date
     ).subquery()
 
-    # Filtram proprietățile care au camere disponibile
+    # Filtrare proprietăți care au camere disponibile
     properties_query = db.session.query(Property).join(Room).filter(
         ~Room.id.in_(reserved_rooms)
     )
@@ -143,7 +142,10 @@ def filter_properties():
         properties_query = properties_query.filter(Property.region == region)
 
     if price_max:
-        properties_query = properties_query.filter(Property.price <= price_max)
+        properties_query = properties_query.filter(Room.price <= price_max)
+
+    if num_persons:
+        properties_query = properties_query.filter(Room.persons >= num_persons)
 
     if facilities:
         for facility in facilities:
@@ -153,6 +155,9 @@ def filter_properties():
             )
 
     available_properties = properties_query.all()
+
+    if not available_properties:
+        return jsonify({'message': 'No properties found matching the criteria'}), 200
 
     return jsonify([property_item.to_dict() for property_item in available_properties]), 200
 
@@ -174,8 +179,6 @@ def update_property(property_id):
     property_item.longitude = data['longitude']
     property_item.check_in = data['check_in']
     property_item.check_out = data['check_out']
-    property_item.price = data['price']
-    property_item.currency = data['currency']
     property_item.num_reviews = data['num_reviews']
     property_item.availability = data['availability']
     property_item.stars = data['stars']
@@ -222,7 +225,9 @@ def create_room():
     new_room = Room(
         property_id=data['property_id'],
         room_type=data['room_type'],
-        persons=data['persons']
+        persons=data['persons'],
+        price=data['price'],
+        currency=data['currency']
     )
     db.session.add(new_room)
     db.session.commit()
@@ -254,6 +259,8 @@ def update_room(room_id):
         return jsonify({'message': 'Unauthorized'}), 403
     room.room_type = data['room_type']
     room.persons = data['persons']
+    room.price = data['price']
+    room.currency = data['currency']
     db.session.commit()
     return jsonify({'message': 'Room updated successfully'}), 200
 

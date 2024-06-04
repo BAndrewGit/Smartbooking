@@ -27,8 +27,6 @@ class PropertySchema(Schema):
     longitude = fields.Float()
     check_in = fields.Str()
     check_out = fields.Str()
-    price = fields.Float(required=True)
-    currency = fields.Str(required=True)
     num_reviews = fields.Int()
     availability = fields.Bool()
     stars = fields.Int()
@@ -69,6 +67,8 @@ class RoomSchema(Schema):
     property_id = fields.Int(required=True)
     room_type = fields.Str()
     persons = fields.Int()
+    price = fields.Float(required=True)
+    currency = fields.Str(required=True)
     reservations = fields.List(fields.Nested(lambda: ReservationSchema(exclude=('room',))))
 
     class Meta:
