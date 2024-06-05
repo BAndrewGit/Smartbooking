@@ -3,7 +3,7 @@ import stripe
 from .ai import recommend_properties, predict_price_for_room
 from .models import User, Property, Room, Reservation, Review, Favorite, db, Facility, RoomFacility, UserPreferences, \
     Payment
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from datetime import datetime
 from functools import wraps
 
@@ -13,6 +13,18 @@ routes_bp = Blueprint('routes', __name__)
 
 
 # Decorators for access control
+def role_required(role):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            claims = get_jwt()
+            if claims['role'] != role:
+                return jsonify({'message': 'Unauthorized'}), 403
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
 def check_property_owner(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -37,6 +49,28 @@ def check_review_owner(f):
         return f(*args, **kwargs)
 
     return decorated_function
+
+
+@routes_bp.route('/admin/users/<int:user_id>/role', methods=['PUT'])
+@jwt_required()
+@role_required('superadmin')  # Doar 'superadmin' poate modifica rolurile
+def update_user_role(user_id):
+    data = request.get_json()
+    user = User.query.get_or_404(user_id)
+    new_role = data.get('role')
+    current_user_id = get_jwt_identity()
+
+    if new_role not in ['user', 'owner', 'superadmin']:
+        return jsonify({'message': 'Invalid role specified'}), 400
+
+    # Prevenire schimbare rol propriu de la superadmin la altceva
+    if user.id == current_user_id and user.role == 'superadmin' and new_role != 'superadmin':
+        return jsonify({'message': 'Cannot change own role from superadmin to another role'}), 400
+
+    user.role = new_role
+    db.session.commit()
+
+    return jsonify({'message': 'User role updated successfully'}), 200
 
 
 # User Management (self)

@@ -32,14 +32,14 @@ class User(db.Model):
     name = db.Column(db.String(50), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
-    role = db.Column(db.String(50), nullable=False)
+    role = db.Column(db.String(50), nullable=False, default='user')
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
     properties = db.relationship('Property', backref='owner', cascade='all, delete-orphan')
     reservations = db.relationship('Reservation', backref='user', cascade='all, delete-orphan')
     reviews = db.relationship('Review', backref='user', cascade='all, delete-orphan')
     favorites = db.relationship('Favorite', backref='user', cascade='all, delete-orphan')
-    preferences = db.relationship('UserPreferences', backref='user', uselist=False)
+    preferences = db.relationship('UserPreferences', backref='user_preferences', uselist=False)  # Numele backref schimbat
 
     def to_dict(self):
         return {
@@ -247,7 +247,7 @@ class UserPreferences(db.Model):
     rating_location = db.Column(db.Float, nullable=True)
     rating_wifi = db.Column(db.Float, nullable=True)
 
-    user = db.relationship('User', backref='preferences', uselist=False)
+    user = db.relationship('User', backref='preferences_backref', uselist=False)
 
     def to_dict(self):
         return {

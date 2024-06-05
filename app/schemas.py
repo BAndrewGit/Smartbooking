@@ -5,6 +5,7 @@ class UserSchema(Schema):
     id = fields.Int(dump_only=True)
     name = fields.Str(required=True)
     email = fields.Email(required=True)
+    role = fields.Str(dump_only=True)
     created_at = fields.DateTime(dump_only=True)
     properties = fields.List(fields.Nested(lambda: PropertySchema(exclude=('owner',))))
     reservations = fields.List(fields.Nested(lambda: ReservationSchema(exclude=('user',))))
