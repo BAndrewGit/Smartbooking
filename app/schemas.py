@@ -10,6 +10,7 @@ class UserSchema(Schema):
     reservations = fields.List(fields.Nested(lambda: ReservationSchema(exclude=('user',))))
     reviews = fields.List(fields.Nested(lambda: ReviewSchema(exclude=('user',))))
     favorites = fields.List(fields.Nested(lambda: FavoriteSchema(exclude=('user',))))
+    preferences = fields.Nested(lambda: UserPreferencesSchema(exclude=('user',)), dump_only=True)
 
     class Meta:
         unknown = EXCLUDE
@@ -132,6 +133,21 @@ class PaymentSchema(Schema):
     payment_intent_id = fields.Str(required=True)
     created_at = fields.DateTime(dump_only=True)
     user = fields.Nested(lambda: UserSchema(only=('id', 'name', 'email')))
+
+    class Meta:
+        unknown = EXCLUDE
+
+
+class UserPreferencesSchema(Schema):
+    id = fields.Int(dump_only=True)
+    user_id = fields.Int(required=True)
+    rating_personal = fields.Float(required=True)
+    rating_facilities = fields.Float(required=True)
+    rating_cleanliness = fields.Float(required=True)
+    rating_comfort = fields.Float(required=True)
+    rating_value_for_money = fields.Float(required=True)
+    rating_location = fields.Float(required=True)
+    rating_wifi = fields.Float(required=True)
 
     class Meta:
         unknown = EXCLUDE

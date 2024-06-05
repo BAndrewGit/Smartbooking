@@ -233,3 +233,29 @@ class Payment(db.Model):
             'payment_intent_id': self.payment_intent_id,
             'created_at': self.created_at.isoformat()
         }
+
+
+class UserPreferences(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    rating_personal = db.Column(db.Float, nullable=False, default=1)
+    rating_facilities = db.Column(db.Float, nullable=False, default=1)
+    rating_cleanliness = db.Column(db.Float, nullable=False, default=1)
+    rating_comfort = db.Column(db.Float, nullable=False, default=1)
+    rating_value_for_money = db.Column(db.Float, nullable=False, default=1)
+    rating_location = db.Column(db.Float, nullable=False, default=1)
+    rating_wifi = db.Column(db.Float, nullable=False, default=1)
+
+    user = db.relationship('User', backref='preferences', uselist=False)
+
+    def to_dict(self):
+        return {
+            'user_id': self.user_id,
+            'rating_personal': self.rating_personal,
+            'rating_facilities': self.rating_facilities,
+            'rating_cleanliness': self.rating_cleanliness,
+            'rating_comfort': self.rating_comfort,
+            'rating_value_for_money': self.rating_value_for_money,
+            'rating_location': self.rating_location,
+            'rating_wifi': self.rating_wifi
+        }

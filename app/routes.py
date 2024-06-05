@@ -1,8 +1,13 @@
-from flask import Blueprint, request, jsonify
-from .models import User, Property, Room, Reservation, Review, Favorite, db, Facility, RoomFacility
+from flask import Blueprint, request, jsonify, current_app
+import stripe
+from .ai import recommend_properties, predict_price_for_room
+from .models import User, Property, Room, Reservation, Review, Favorite, db, Facility, RoomFacility, UserPreferences, \
+    Payment
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 from functools import wraps
+
+stripe.api_key = current_app.config['STRIPE_API_KEY']
 
 routes_bp = Blueprint('routes', __name__)
 
@@ -103,12 +108,28 @@ def get_properties():
 
 
 @routes_bp.route('/filter_properties', methods=['GET'])
+@jwt_required()
 def filter_properties():
+    user_id = get_jwt_identity()
+    user_preferences = UserPreferences.query.filter_by(user_id=user_id).first()
+
+    user_ratings = {}
+    if user_preferences:
+        user_ratings = {
+            'nota_personal': user_preferences.rating_personal,
+            'nota_facilităţi': user_preferences.rating_facilities,
+            'nota_curăţenie': user_preferences.rating_cleanliness,
+            'nota_confort': user_preferences.rating_comfort,
+            'nota_raport_calitate/preţ': user_preferences.rating_value_for_money,
+            'nota_locaţie': user_preferences.rating_location,
+            'nota_wifi_gratuit': user_preferences.rating_wifi
+        }
+
     check_in = request.args.get('check_in')
     check_out = request.args.get('check_out')
     region = request.args.get('region', None)
-    price_max = request.args.get('price_max', type=float)  # Am adăugat tipul float
-    num_persons = request.args.get('num_persons', type=int)  # Parametru nou
+    price_max = request.args.get('price_max', type=float)
+    num_persons = request.args.get('num_persons', type=int)
     facilities = request.args.getlist('facilities', type=int)
 
     try:
@@ -145,8 +166,21 @@ def filter_properties():
             )
 
     available_properties = properties_query.all()
+    recommendations = recommend_properties(
+        user_id,
+        user_ratings,
+        max_budget=price_max,
+        preferred_region=region,
+        check_in_date=check_in_date,
+        check_out_date=check_out_date
+    ) if user_preferences else []
 
-    return jsonify([property_item.to_dict() for property_item in available_properties]), 200
+    sorted_properties = sorted(available_properties, key=lambda x: x.id not in [rec['id'] for rec in recommendations])
+
+    return jsonify({
+        'available_properties': [property_item.to_dict() for property_item in sorted_properties],
+        'recommendations': recommendations
+    }), 200
 
 
 @routes_bp.route('/properties/<int:property_id>', methods=['PUT'])
@@ -198,6 +232,7 @@ def create_room():
     property_item = Property.query.get_or_404(data['property_id'])
     if property_item.owner_id != user_id:
         return jsonify({'message': 'Unauthorized'}), 403
+
     new_room = Room(
         property_id=data['property_id'],
         room_type=data['room_type'],
@@ -208,7 +243,16 @@ def create_room():
     db.session.add(new_room)
     db.session.commit()
 
-    return jsonify({'message': 'Room created successfully'}), 201
+    # Apelarea funcției de predicție a prețului și actualizarea ratingului
+    price_prediction = predict_price_for_room(new_room.id)
+    if 'error' in price_prediction:
+        db.session.delete(new_room)
+        db.session.commit()
+        return jsonify({'error': price_prediction['error']}), 500
+
+    db.session.commit()  # Confirmăm crearea camerei doar după obținerea ratingului
+
+    return jsonify(new_room.to_dict()), 201
 
 
 @routes_bp.route('/rooms', methods=['GET'])
@@ -234,12 +278,21 @@ def update_room(room_id):
     property_item = Property.query.get_or_404(room.property_id)
     if property_item.owner_id != user_id:
         return jsonify({'message': 'Unauthorized'}), 403
+
     room.room_type = data['room_type']
     room.persons = data['persons']
     room.price = data['price']
     room.currency = data['currency']
     db.session.commit()
-    return jsonify({'message': 'Room updated successfully'}), 200
+
+    # Apelarea funcției de predicție a prețului și actualizarea ratingului
+    price_prediction = predict_price_for_room(room.id)
+    if 'error' in price_prediction:
+        return jsonify({'error': price_prediction['error']}), 500
+
+    db.session.commit()  # Confirmăm actualizarea camerei doar după obținerea ratingului
+
+    return jsonify(room.to_dict()), 200
 
 
 @routes_bp.route('/rooms/<int:room_id>', methods=['DELETE'])
@@ -289,22 +342,63 @@ def get_facilities_for_room(room_id):
 @jwt_required()
 def create_reservation():
     data = request.get_json()
-    # Verifica disponibilitatea camerei pentru perioada specificata
+    check_in_date = datetime.strptime(data['check_in_date'], '%d-%m-%Y')
+    check_out_date = datetime.strptime(data['check_out_date'], '%d-%m-%Y')
+
+    # Verifica disponibilitatea camerei pentru perioada specificată
     existing_reservations = Reservation.query.filter(
         Reservation.room_id == data['room_id'],
-        Reservation.check_in_date < data['check_out_date'],
-        Reservation.check_out_date > data['check_in_date']
+        Reservation.check_in_date < check_out_date,
+        Reservation.check_out_date > check_in_date
     ).all()
 
     if existing_reservations:
         return jsonify({'message': 'Room is already reserved for the specified period'}), 400
 
+    room = Room.query.get_or_404(data['room_id'])
+    num_nights = (check_out_date - check_in_date).days
+    amount = room.price * num_nights
+
+    try:
+        intent = stripe.PaymentIntent.create(
+            amount=int(amount * 100),  # Amount in cents
+            currency=room.currency,
+        )
+
+        payment = Payment(
+            user_id=get_jwt_identity(),
+            amount=amount,
+            currency=room.currency,
+            status='pending',
+            payment_intent_id=intent.id
+        )
+        db.session.add(payment)
+        db.session.commit()
+
+        return jsonify({
+            'client_secret': intent.client_secret,
+            'payment_id': payment.id,
+            'message': 'Payment initiated successfully'
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@routes_bp.route('/confirm_reservation', methods=['POST'])
+@jwt_required()
+def confirm_reservation():
+    data = request.get_json()
+    payment = Payment.query.get_or_404(data['payment_id'])
+
+    if payment.status != 'succeeded':
+        return jsonify({'message': 'Payment not confirmed'}), 400
+
     new_reservation = Reservation(
-        user_id=get_jwt_identity(),
+        user_id=payment.user_id,
         room_id=data['room_id'],
-        check_in_date=data['check_in_date'],
-        check_out_date=data['check_out_date'],
-        status=data['status']
+        check_in_date=datetime.strptime(data['check_in_date'], '%d-%m-%Y'),
+        check_out_date=datetime.strptime(data['check_out_date'], '%d-%m-%Y'),
+        status='confirmed'
     )
     db.session.add(new_reservation)
     db.session.commit()
@@ -462,3 +556,49 @@ def delete_favorite(favorite_id):
 def get_facilities():
     facilities = Facility.query.all()
     return jsonify([facility.to_dict() for facility in facilities]), 200
+
+
+@routes_bp.route('/user/preferences', methods=['POST'])
+@jwt_required()
+def create_user_preferences():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+
+    preferences = UserPreferences(
+        user_id=user_id,
+        rating_personal=data.get('rating_personal', 1),
+        rating_facilities=data.get('rating_facilities', 1),
+        rating_cleanliness=data.get('rating_cleanliness', 1),
+        rating_comfort=data.get('rating_comfort', 1),
+        rating_value_for_money=data.get('rating_value_for_money', 1),
+        rating_location=data.get('rating_location', 1),
+        rating_wifi=data.get('rating_wifi', 1)
+    )
+
+    db.session.add(preferences)
+    db.session.commit()
+
+    return jsonify(preferences.to_dict()), 201
+
+
+@routes_bp.route('/user/preferences', methods=['PUT'])
+@jwt_required()
+def update_user_preferences():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+
+    preferences = UserPreferences.query.filter_by(user_id=user_id).first()
+    if not preferences:
+        return jsonify({'error': 'Preferences not found'}), 404
+
+    preferences.rating_personal = data.get('rating_personal', preferences.rating_personal)
+    preferences.rating_facilities = data.get('rating_facilities', preferences.rating_facilities)
+    preferences.rating_cleanliness = data.get('rating_cleanliness', preferences.rating_cleanliness)
+    preferences.rating_comfort = data.get('rating_comfort', preferences.rating_comfort)
+    preferences.rating_value_for_money = data.get('rating_value_for_money', preferences.rating_value_for_money)
+    preferences.rating_location = data.get('rating_location', preferences.rating_location)
+    preferences.rating_wifi = data.get('rating_wifi', preferences.rating_wifi)
+
+    db.session.commit()
+
+    return jsonify(preferences.to_dict()), 200
