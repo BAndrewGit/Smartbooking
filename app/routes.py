@@ -100,13 +100,6 @@ def create_property():
     return jsonify({'message': 'Property created successfully'}), 201
 
 
-@routes_bp.route('/properties', methods=['GET'])
-@jwt_required()
-def get_properties():
-    properties = Property.query.all()
-    return jsonify([property_item.to_dict() for property_item in properties]), 200
-
-
 @routes_bp.route('/filter_properties', methods=['GET'])
 @jwt_required()
 def filter_properties():
@@ -133,10 +126,10 @@ def filter_properties():
     facilities = request.args.getlist('facilities', type=int)
 
     try:
-        check_in_date = datetime.strptime(check_in, '%Y-%m-%d')
-        check_out_date = datetime.strptime(check_out, '%Y-%m-%d')
+        check_in_date = datetime.strptime(check_in, '%d-%m-%Y')
+        check_out_date = datetime.strptime(check_out, '%d-%m-%Y')
     except ValueError:
-        return jsonify({'message': 'Invalid date format. Use YYYY-MM-DD.'}), 400
+        return jsonify({'message': 'Invalid date format. Use dd-mm-yyyy.'}), 400
 
     # Filtrare camere rezervate în perioada specificată
     reserved_rooms = db.session.query(Reservation.room_id).filter(
@@ -170,9 +163,7 @@ def filter_properties():
         user_id,
         user_ratings,
         max_budget=price_max,
-        preferred_region=region,
-        check_in_date=check_in_date,
-        check_out_date=check_out_date
+        preferred_region=region
     ) if user_preferences else []
 
     sorted_properties = sorted(available_properties, key=lambda x: x.id not in [rec['id'] for rec in recommendations])
@@ -424,21 +415,6 @@ def get_reservation(reservation_id):
     return jsonify(reservation.to_dict()), 200
 
 
-@routes_bp.route('/reservations/<int:reservation_id>', methods=['PUT'])
-@jwt_required()
-def update_reservation(reservation_id):
-    user_id = get_jwt_identity()
-    data = request.get_json()
-    reservation = Reservation.query.get_or_404(reservation_id)
-    if reservation.user_id != user_id:
-        return jsonify({'message': 'Unauthorized'}), 403
-    reservation.check_in_date = data['check_in_date']
-    reservation.check_out_date = data['check_out_date']
-    reservation.status = data['status']
-    db.session.commit()
-    return jsonify({'message': 'Reservation updated successfully'}), 200
-
-
 @routes_bp.route('/reservations/<int:reservation_id>', methods=['DELETE'])
 @jwt_required()
 def delete_reservation(reservation_id):
@@ -564,15 +540,28 @@ def create_user_preferences():
     user_id = get_jwt_identity()
     data = request.get_json()
 
+    total_score = sum([
+        data.get('rating_personal', 0),
+        data.get('rating_facilities', 0),
+        data.get('rating_cleanliness', 0),
+        data.get('rating_comfort', 0),
+        data.get('rating_value_for_money', 0),
+        data.get('rating_location', 0),
+        data.get('rating_wifi', 0)
+    ])
+
+    if total_score > 44:
+        return jsonify({'error': f'Total score of preferences must be less than or equal to 44, yours is {total_score}'}), 400
+
     preferences = UserPreferences(
         user_id=user_id,
-        rating_personal=data.get('rating_personal', 1),
-        rating_facilities=data.get('rating_facilities', 1),
-        rating_cleanliness=data.get('rating_cleanliness', 1),
-        rating_comfort=data.get('rating_comfort', 1),
-        rating_value_for_money=data.get('rating_value_for_money', 1),
-        rating_location=data.get('rating_location', 1),
-        rating_wifi=data.get('rating_wifi', 1)
+        rating_personal=data.get('rating_personal'),
+        rating_facilities=data.get('rating_facilities'),
+        rating_cleanliness=data.get('rating_cleanliness'),
+        rating_comfort=data.get('rating_comfort'),
+        rating_value_for_money=data.get('rating_value_for_money'),
+        rating_location=data.get('rating_location'),
+        rating_wifi=data.get('rating_wifi')
     )
 
     db.session.add(preferences)
@@ -590,6 +579,19 @@ def update_user_preferences():
     preferences = UserPreferences.query.filter_by(user_id=user_id).first()
     if not preferences:
         return jsonify({'error': 'Preferences not found'}), 404
+
+    total_score = sum([
+        data.get('rating_personal', preferences.rating_personal or 0),
+        data.get('rating_facilities', preferences.rating_facilities or 0),
+        data.get('rating_cleanliness', preferences.rating_cleanliness or 0),
+        data.get('rating_comfort', preferences.rating_comfort or 0),
+        data.get('rating_value_for_money', preferences.rating_value_for_money or 0),
+        data.get('rating_location', preferences.rating_location or 0),
+        data.get('rating_wifi', preferences.rating_wifi or 0)
+    ])
+
+    if total_score > 44:
+        return jsonify({'error': f'Total score of preferences must be less than or equal to 44, yours is {total_score}'}), 400
 
     preferences.rating_personal = data.get('rating_personal', preferences.rating_personal)
     preferences.rating_facilities = data.get('rating_facilities', preferences.rating_facilities)

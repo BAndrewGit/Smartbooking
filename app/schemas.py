@@ -141,13 +141,14 @@ class PaymentSchema(Schema):
 class UserPreferencesSchema(Schema):
     id = fields.Int(dump_only=True)
     user_id = fields.Int(required=True)
-    rating_personal = fields.Float(required=True)
-    rating_facilities = fields.Float(required=True)
-    rating_cleanliness = fields.Float(required=True)
-    rating_comfort = fields.Float(required=True)
-    rating_value_for_money = fields.Float(required=True)
-    rating_location = fields.Float(required=True)
-    rating_wifi = fields.Float(required=True)
+    rating_personal = fields.Float(allow_none=True)
+    rating_facilities = fields.Float(allow_none=True)
+    rating_cleanliness = fields.Float(allow_none=True)
+    rating_comfort = fields.Float(allow_none=True)
+    rating_value_for_money = fields.Float(allow_none=True)
+    rating_location = fields.Float(allow_none=True)
+    rating_wifi = fields.Float(allow_none=True)
 
     class Meta:
         unknown = EXCLUDE
+

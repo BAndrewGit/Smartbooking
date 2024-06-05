@@ -29,7 +29,6 @@ def create_app():
         # Înregistrare blueprint-uri
         app.register_blueprint(auth.auth_bp, url_prefix='/auth')
         app.register_blueprint(routes.routes_bp)
-        app.register_blueprint(ai.ai_bp, url_prefix='/ai')
         app.register_blueprint(payments.payments_bp, url_prefix='/payments')
 
     return app

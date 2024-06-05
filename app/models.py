@@ -39,6 +39,7 @@ class User(db.Model):
     reservations = db.relationship('Reservation', backref='user', cascade='all, delete-orphan')
     reviews = db.relationship('Review', backref='user', cascade='all, delete-orphan')
     favorites = db.relationship('Favorite', backref='user', cascade='all, delete-orphan')
+    preferences = db.relationship('UserPreferences', backref='user', uselist=False)
 
     def to_dict(self):
         return {
@@ -238,13 +239,13 @@ class Payment(db.Model):
 class UserPreferences(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    rating_personal = db.Column(db.Float, nullable=False, default=1)
-    rating_facilities = db.Column(db.Float, nullable=False, default=1)
-    rating_cleanliness = db.Column(db.Float, nullable=False, default=1)
-    rating_comfort = db.Column(db.Float, nullable=False, default=1)
-    rating_value_for_money = db.Column(db.Float, nullable=False, default=1)
-    rating_location = db.Column(db.Float, nullable=False, default=1)
-    rating_wifi = db.Column(db.Float, nullable=False, default=1)
+    rating_personal = db.Column(db.Float, nullable=True)
+    rating_facilities = db.Column(db.Float, nullable=True)
+    rating_cleanliness = db.Column(db.Float, nullable=True)
+    rating_comfort = db.Column(db.Float, nullable=True)
+    rating_value_for_money = db.Column(db.Float, nullable=True)
+    rating_location = db.Column(db.Float, nullable=True)
+    rating_wifi = db.Column(db.Float, nullable=True)
 
     user = db.relationship('User', backref='preferences', uselist=False)
 
