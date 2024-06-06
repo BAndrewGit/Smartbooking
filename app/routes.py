@@ -1,11 +1,11 @@
-from flask import Blueprint, request, jsonify, current_app
-import stripe
-from .ai import recommend_properties, predict_price_for_room
-from .models import User, Property, Room, Reservation, Review, Favorite, db, Facility, RoomFacility, UserPreferences, \
-    Payment
-from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
+import stripe
+from flask import Blueprint, request, jsonify, current_app
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from .ai import recommend_properties, predict_price_for_room
+from .models import User, Property, Room, Reservation, Review, Favorite, db, Facility, RoomFacility, UserPreferences
+from .payments import create_payment_intent, confirm_payment, refund_payment
 
 stripe.api_key = current_app.config['STRIPE_API_KEY']
 
@@ -383,43 +383,34 @@ def create_reservation():
     room = Room.query.get_or_404(data['room_id'])
     num_nights = (check_out_date - check_in_date).days
     amount = room.price * num_nights
+    user_id = get_jwt_identity()
 
-    try:
-        intent = stripe.PaymentIntent.create(
-            amount=int(amount * 100),  # Amount in cents
-            currency=room.currency,
-        )
+    # Crearea intenției de plată
+    payment_result = create_payment_intent(amount, room.currency, user_id)
+    if 'error' in payment_result:
+        return jsonify({'error': payment_result['error']}), 500
 
-        payment = Payment(
-            user_id=get_jwt_identity(),
-            amount=amount,
-            currency=room.currency,
-            status='pending',
-            payment_intent_id=intent.id
-        )
-        db.session.add(payment)
-        db.session.commit()
-
-        return jsonify({
-            'client_secret': intent.client_secret,
-            'payment_id': payment.id,
-            'message': 'Payment initiated successfully'
-        }), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    return jsonify({
+        'client_secret': payment_result['client_secret'],
+        'payment_id': payment_result['payment_id'],
+        'message': 'Payment initiated successfully'
+    }), 200
 
 
 @routes_bp.route('/confirm_reservation', methods=['POST'])
 @jwt_required()
 def confirm_reservation():
     data = request.get_json()
-    payment = Payment.query.get_or_404(data['payment_id'])
+    payment_id = data.get('payment_id')
 
-    if payment.status != 'succeeded':
-        return jsonify({'message': 'Payment not confirmed'}), 400
+    # Confirmarea plății
+    payment_result = confirm_payment(payment_id)
+    if 'error' in payment_result:
+        return jsonify({'error': payment_result['error']}), 500
 
+    # Crearea rezervării doar după confirmarea plății
     new_reservation = Reservation(
-        user_id=payment.user_id,
+        user_id=get_jwt_identity(),
         room_id=data['room_id'],
         check_in_date=datetime.strptime(data['check_in_date'], '%d-%m-%Y'),
         check_out_date=datetime.strptime(data['check_out_date'], '%d-%m-%Y'),
@@ -427,7 +418,7 @@ def confirm_reservation():
     )
     db.session.add(new_reservation)
     db.session.commit()
-    return jsonify({'message': 'Reservation created successfully'}), 201
+    return jsonify({'message': 'Reservation created and payment confirmed successfully'}), 201
 
 
 @routes_bp.route('/reservations', methods=['GET'])
@@ -449,16 +440,29 @@ def get_reservation(reservation_id):
     return jsonify(reservation.to_dict()), 200
 
 
-@routes_bp.route('/reservations/<int:reservation_id>', methods=['DELETE'])
-@jwt_required()
-def delete_reservation(reservation_id):
-    user_id = get_jwt_identity()
+def cancel_reservation():
+    data = request.get_json()
+    reservation_id = data.get('reservation_id')
     reservation = Reservation.query.get_or_404(reservation_id)
+    user_id = get_jwt_identity()
+
     if reservation.user_id != user_id:
         return jsonify({'message': 'Unauthorized'}), 403
-    db.session.delete(reservation)
+
+    # Verifică dacă anularea este cu cel puțin 30 de zile înainte de check-in
+    if (reservation.check_in_date - datetime.now(timezone.utc)).days < 30:
+        return jsonify({'message': 'Cancellation period has passed'}), 400
+
+    # Returnează banii utilizând Stripe
+    refund_result = refund_payment(reservation.payment_id)
+    if 'error' in refund_result:
+        return jsonify({'error': refund_result['error']}), 500
+
+    reservation.status = 'cancelled'
+    reservation.cancellation_date = datetime.now(timezone.utc)
     db.session.commit()
-    return jsonify({'message': 'Reservation deleted successfully'}), 200
+
+    return jsonify({'message': 'Reservation cancelled and payment refunded successfully'}), 200
 
 
 # Review Management (User)
