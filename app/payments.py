@@ -1,13 +1,10 @@
-from flask import Blueprint, request, jsonify, current_app
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask import current_app
 import stripe
 from .models import Payment
 from . import db
-from .schemas import PaymentSchema
+
 
 stripe.api_key = current_app.config['STRIPE_API_KEY']
-
-payments_bp = Blueprint('payments', __name__)
 
 
 def create_payment_intent(amount, currency='ron', user_id=None):

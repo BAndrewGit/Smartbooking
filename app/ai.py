@@ -5,7 +5,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.cluster import KMeans
-from .models import Favorite, Property, Room, Review, UserPreferences, db, Reservation
+from .models import Favorite, Property, Room, Review, db, Reservation
 
 # Încărcarea datelor inițiale
 df = pd.read_csv('clean_dataset_Romania.csv')

@@ -1,4 +1,5 @@
 import bcrypt
+from dotenv import load_dotenv
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token
 from itsdangerous import URLSafeTimedSerializer
@@ -9,6 +10,8 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 auth_bp = Blueprint('auth', __name__)
+
+load_dotenv(dotenv_path='Keys.env')
 
 
 # Register user
@@ -68,7 +71,7 @@ def send_email(to_email, token):
     msg['To'] = to_email
     msg['Subject'] = 'Reset Your Password'
 
-    reset_url = f'http://yourdomain.com/reset_password/{token}'
+    reset_url = f'http://localhost:5000/reset_password/{token}'
     body = f'Click the following link to reset your password: {reset_url}'
     msg.attach(MIMEText(body, 'plain'))
 
