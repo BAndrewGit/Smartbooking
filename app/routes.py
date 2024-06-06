@@ -13,16 +13,32 @@ routes_bp = Blueprint('routes', __name__)
 
 
 # Decorators for access control
-def role_required(role):
+def role_required(*roles):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             claims = get_jwt()
-            if claims['role'] != role:
+            if claims['role'] not in roles:
                 return jsonify({'message': 'Unauthorized'}), 403
             return f(*args, **kwargs)
+
         return decorated_function
+
     return decorator
+
+
+def check_property_owner_or_superadmin(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user_id = get_jwt_identity()
+        claims = get_jwt()
+        property_id = kwargs.get('property_id') or request.json.get('property_id')
+        property_item = Property.query.get_or_404(property_id)
+        if property_item.owner_id != user_id and claims['role'] != 'superadmin':
+            return jsonify({'message': 'Unauthorized'}), 403
+        return f(*args, **kwargs)
+
+    return decorated_function
 
 
 def check_property_owner(f):
@@ -47,33 +63,38 @@ def check_review_owner(f):
         if review.user_id != user_id:
             return jsonify({'message': 'Unauthorized'}), 403
         return f(*args, **kwargs)
+    return decorated_function
+
+
+def check_review_owner_or_superadmin(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user_id = get_jwt_identity()
+        claims = get_jwt()
+        review_id = kwargs.get('review_id')
+        review = Review.query.get_or_404(review_id)
+        if review.user_id != user_id and claims['role'] != 'superadmin':
+            return jsonify({'message': 'Unauthorized'}), 403
+        return f(*args, **kwargs)
 
     return decorated_function
 
 
-@routes_bp.route('/admin/users/<int:user_id>/role', methods=['PUT'])
-@jwt_required()
-@role_required('superadmin')  # Doar 'superadmin' poate modifica rolurile
-def update_user_role(user_id):
-    data = request.get_json()
-    user = User.query.get_or_404(user_id)
-    new_role = data.get('role')
-    current_user_id = get_jwt_identity()
+def check_reservation_owner_or_superadmin(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user_id = get_jwt_identity()
+        claims = get_jwt()
+        reservation_id = kwargs.get('reservation_id')
+        reservation = Reservation.query.get_or_404(reservation_id)
+        if reservation.user_id != user_id and claims['role'] != 'superadmin':
+            return jsonify({'message': 'Unauthorized'}), 403
+        return f(*args, **kwargs)
 
-    if new_role not in ['user', 'owner', 'superadmin']:
-        return jsonify({'message': 'Invalid role specified'}), 400
-
-    # Prevenire schimbare rol propriu de la superadmin la altceva
-    if user.id == current_user_id and user.role == 'superadmin' and new_role != 'superadmin':
-        return jsonify({'message': 'Cannot change own role from superadmin to another role'}), 400
-
-    user.role = new_role
-    db.session.commit()
-
-    return jsonify({'message': 'User role updated successfully'}), 200
+    return decorated_function
 
 
-# User Management (self)
+# User Management
 @routes_bp.route('/user', methods=['GET'])
 @jwt_required()
 def get_current_user():
@@ -104,9 +125,10 @@ def delete_current_user():
     return jsonify({'message': 'User deleted successfully'}), 200
 
 
-# Property Management (Admin)
+# Property Management
 @routes_bp.route('/properties', methods=['POST'])
 @jwt_required()
+@role_required('owner')
 def create_property():
     user_id = get_jwt_identity()
     data = request.get_json()
@@ -135,7 +157,6 @@ def create_property():
 
 
 @routes_bp.route('/filter_properties', methods=['GET'])
-@jwt_required()
 def filter_properties():
     user_id = get_jwt_identity()
     user_preferences = UserPreferences.query.filter_by(user_id=user_id).first()
@@ -210,6 +231,7 @@ def filter_properties():
 
 @routes_bp.route('/properties/<int:property_id>', methods=['PUT'])
 @jwt_required()
+@check_property_owner
 def update_property(property_id):
     user_id = get_jwt_identity()
     data = request.get_json()
@@ -238,6 +260,7 @@ def update_property(property_id):
 
 @routes_bp.route('/properties/<int:property_id>', methods=['DELETE'])
 @jwt_required()
+@check_property_owner_or_superadmin
 def delete_property(property_id):
     user_id = get_jwt_identity()
     property_item = Property.query.get_or_404(property_id)
@@ -248,9 +271,10 @@ def delete_property(property_id):
     return jsonify({'message': 'Property deleted successfully'}), 200
 
 
-# Room Management (Admin)
+# Room Management
 @routes_bp.route('/rooms', methods=['POST'])
 @jwt_required()
+@check_property_owner
 def create_room():
     user_id = get_jwt_identity()
     data = request.get_json()
@@ -281,7 +305,6 @@ def create_room():
 
 
 @routes_bp.route('/rooms', methods=['GET'])
-@jwt_required()
 def get_rooms():
     rooms = Room.query.all()
     return jsonify([room.to_dict() for room in rooms]), 200
@@ -296,6 +319,7 @@ def get_room(room_id):
 
 @routes_bp.route('/rooms/<int:room_id>', methods=['PUT'])
 @jwt_required()
+@check_property_owner
 def update_room(room_id):
     user_id = get_jwt_identity()
     data = request.get_json()
@@ -322,6 +346,7 @@ def update_room(room_id):
 
 @routes_bp.route('/rooms/<int:room_id>', methods=['DELETE'])
 @jwt_required()
+@check_property_owner_or_superadmin
 def delete_room(room_id):
     user_id = get_jwt_identity()
     room = Room.query.get_or_404(room_id)
@@ -336,6 +361,7 @@ def delete_room(room_id):
 # Room Facility Management (Admin)
 @routes_bp.route('/room_facilities', methods=['POST'])
 @jwt_required()
+@check_property_owner
 def add_facility_to_room():
     user_id = get_jwt_identity()
     data = request.get_json()
@@ -348,7 +374,7 @@ def add_facility_to_room():
         room_id=room.id,
         facility_id=data['facility_id'],
         presence=data.get('presence', True)
-        )
+    )
     db.session.add(facility)
     db.session.commit()
 
@@ -362,7 +388,7 @@ def get_facilities_for_room(room_id):
     return jsonify([facility.to_dict() for facility in facilities]), 200
 
 
-# Reservation Management (Admin and User)
+# Reservation Management
 @routes_bp.route('/reservations', methods=['POST'])
 @jwt_required()
 def create_reservation():
@@ -433,11 +459,28 @@ def get_reservations():
 @jwt_required()
 def get_reservation(reservation_id):
     user_id = get_jwt_identity()
+    claims = get_jwt()
     reservation = Reservation.query.get_or_404(reservation_id)
     property_item = Property.query.get_or_404(reservation.room.property_id)
-    if reservation.user_id != user_id and property_item.owner_id != user_id:
+
+    if reservation.user_id != user_id and property_item.owner_id != user_id and claims['role'] != 'superadmin':
         return jsonify({'message': 'Unauthorized'}), 403
+
     return jsonify(reservation.to_dict()), 200
+
+
+@routes_bp.route('/reservations/<int:reservation_id>', methods=['DELETE'])
+@jwt_required()
+@check_reservation_owner_or_superadmin
+def delete_reservation(reservation_id):
+    user_id = get_jwt_identity()
+    reservation = Reservation.query.get_or_404(reservation_id)
+    if reservation.user_id != user_id:
+        return jsonify({'message': 'Unauthorized'}), 403
+
+    db.session.delete(reservation)
+    db.session.commit()
+    return jsonify({'message': 'Reservation deleted successfully'}), 200
 
 
 def cancel_reservation():
@@ -501,12 +544,10 @@ def get_review(review_id):
 
 @routes_bp.route('/reviews/<int:review_id>', methods=['PUT'])
 @jwt_required()
+@check_review_owner
 def update_review(review_id):
-    user_id = get_jwt_identity()
     data = request.get_json()
     review = Review.query.get_or_404(review_id)
-    if review.user_id != user_id:
-        return jsonify({'message': 'Unauthorized'}), 403
     review.review_text = data['review_text']
     review.rating_personal = data['rating_personal']
     review.rating_facilities = data['rating_facilities']
@@ -521,6 +562,7 @@ def update_review(review_id):
 
 @routes_bp.route('/reviews/<int:review_id>', methods=['DELETE'])
 @jwt_required()
+@check_review_owner_or_superadmin
 def delete_review(review_id):
     user_id = get_jwt_identity()
     review = Review.query.get_or_404(review_id)
@@ -550,6 +592,8 @@ def create_favorite():
 def get_favorites():
     user_id = get_jwt_identity()
     favorites = Favorite.query.filter_by(user_id=user_id).all()
+    if not favorites:
+        return jsonify({'message': 'No favorites found for this user'}), 404
     return jsonify([favorite.to_dict() for favorite in favorites]), 200
 
 
@@ -572,6 +616,7 @@ def get_facilities():
     return jsonify([facility.to_dict() for facility in facilities]), 200
 
 
+# User Preferences Management
 @routes_bp.route('/user/preferences', methods=['POST'])
 @jwt_required()
 def create_user_preferences():
@@ -589,7 +634,8 @@ def create_user_preferences():
     ])
 
     if total_score > 44:
-        return jsonify({'error': f'Total score of preferences must be less than or equal to 44, yours is {total_score}'}), 400
+        return jsonify(
+            {'error': f'Total score of preferences must be less than or equal to 44, yours is {total_score}'}), 400
 
     preferences = UserPreferences(
         user_id=user_id,
@@ -629,7 +675,8 @@ def update_user_preferences():
     ])
 
     if total_score > 44:
-        return jsonify({'error': f'Total score of preferences must be less than or equal to 44, yours is {total_score}'}), 400
+        return jsonify(
+            {'error': f'Total score of preferences must be less than or equal to 44, yours is {total_score}'}), 400
 
     preferences.rating_personal = data.get('rating_personal', preferences.rating_personal)
     preferences.rating_facilities = data.get('rating_facilities', preferences.rating_facilities)
@@ -642,3 +689,26 @@ def update_user_preferences():
     db.session.commit()
 
     return jsonify(preferences.to_dict()), 200
+
+
+# Management Admin
+@routes_bp.route('/admin/users/<int:user_id>/role', methods=['PUT'])
+@jwt_required()
+@role_required('superadmin')
+def update_user_role(user_id):
+    data = request.get_json()
+    user = User.query.get_or_404(user_id)
+    new_role = data.get('role')
+    current_user_id = get_jwt_identity()
+
+    if new_role not in ['user', 'owner', 'superadmin']:
+        return jsonify({'message': 'Invalid role specified'}), 400
+
+    # Prevenire schimbare rol propriu de la superadmin la altceva
+    if user.id == current_user_id and user.role == 'superadmin' and new_role != 'superadmin':
+        return jsonify({'message': 'Cannot change own role from superadmin to another role'}), 400
+
+    user.role = new_role
+    db.session.commit()
+
+    return jsonify({'message': 'User role updated successfully'}), 200
