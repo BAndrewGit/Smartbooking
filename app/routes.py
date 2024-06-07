@@ -469,20 +469,9 @@ def get_reservation(reservation_id):
     return jsonify(reservation.to_dict()), 200
 
 
-@routes_bp.route('/reservations/<int:reservation_id>', methods=['DELETE'])
+@routes_bp.route('/cancel_reservation/<int:reservation_id>', methods=['POST'])
 @jwt_required()
 @check_reservation_owner_or_superadmin
-def delete_reservation(reservation_id):
-    user_id = get_jwt_identity()
-    reservation = Reservation.query.get_or_404(reservation_id)
-    if reservation.user_id != user_id:
-        return jsonify({'message': 'Unauthorized'}), 403
-
-    db.session.delete(reservation)
-    db.session.commit()
-    return jsonify({'message': 'Reservation deleted successfully'}), 200
-
-
 def cancel_reservation():
     data = request.get_json()
     reservation_id = data.get('reservation_id')
@@ -493,7 +482,7 @@ def cancel_reservation():
         return jsonify({'message': 'Unauthorized'}), 403
 
     # Verifică dacă anularea este cu cel puțin 30 de zile înainte de check-in
-    if (reservation.check_in_date - datetime.now(timezone.utc)).days < 30:
+    if (reservation.check_in_date - datetime.now(timezone.utc)).days < 15:
         return jsonify({'message': 'Cancellation period has passed'}), 400
 
     # Returnează banii utilizând Stripe
