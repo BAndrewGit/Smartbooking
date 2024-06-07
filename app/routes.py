@@ -94,6 +94,29 @@ def check_reservation_owner_or_superadmin(f):
     return decorated_function
 
 
+# Management Admin
+@routes_bp.route('/admin/users/<int:user_id>/role', methods=['PUT'])
+@jwt_required()
+@role_required('superadmin')
+def update_user_role(user_id):
+    data = request.get_json()
+    user = User.query.get_or_404(user_id)
+    new_role = data.get('role')
+    current_user_id = get_jwt_identity()
+
+    if new_role not in ['user', 'owner', 'superadmin']:
+        return jsonify({'message': 'Invalid role specified'}), 400
+
+    # Prevenire schimbare rol propriu de la superadmin la altceva
+    if user.id == current_user_id and user.role == 'superadmin' and new_role != 'superadmin':
+        return jsonify({'message': 'Cannot change own role from superadmin to another role'}), 400
+
+    user.role = new_role
+    db.session.commit()
+
+    return jsonify({'message': 'User role updated successfully'}), 200
+
+
 # User Management
 @routes_bp.route('/user', methods=['GET'])
 @jwt_required()
@@ -123,6 +146,80 @@ def delete_current_user():
     db.session.delete(user)
     db.session.commit()
     return jsonify({'message': 'User deleted successfully'}), 200
+
+
+@routes_bp.route('/user/preferences', methods=['POST'])
+@jwt_required()
+def create_user_preferences():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+
+    total_score = sum([
+        data.get('rating_personal', 0),
+        data.get('rating_facilities', 0),
+        data.get('rating_cleanliness', 0),
+        data.get('rating_comfort', 0),
+        data.get('rating_value_for_money', 0),
+        data.get('rating_location', 0),
+        data.get('rating_wifi', 0)
+    ])
+
+    if total_score > 44:
+        return jsonify(
+            {'error': f'Total score of preferences must be less than or equal to 44, yours is {total_score}'}), 400
+
+    preferences = UserPreferences(
+        user_id=user_id,
+        rating_personal=data.get('rating_personal'),
+        rating_facilities=data.get('rating_facilities'),
+        rating_cleanliness=data.get('rating_cleanliness'),
+        rating_comfort=data.get('rating_comfort'),
+        rating_value_for_money=data.get('rating_value_for_money'),
+        rating_location=data.get('rating_location'),
+        rating_wifi=data.get('rating_wifi')
+    )
+
+    db.session.add(preferences)
+    db.session.commit()
+
+    return jsonify(preferences.to_dict()), 201
+
+
+@routes_bp.route('/user/preferences', methods=['PUT'])
+@jwt_required()
+def update_user_preferences():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+
+    preferences = UserPreferences.query.filter_by(user_id=user_id).first()
+    if not preferences:
+        return jsonify({'error': 'Preferences not found'}), 404
+
+    total_score = sum([
+        data.get('rating_personal', preferences.rating_personal or 0),
+        data.get('rating_facilities', preferences.rating_facilities or 0),
+        data.get('rating_cleanliness', preferences.rating_cleanliness or 0),
+        data.get('rating_comfort', preferences.rating_comfort or 0),
+        data.get('rating_value_for_money', preferences.rating_value_for_money or 0),
+        data.get('rating_location', preferences.rating_location or 0),
+        data.get('rating_wifi', preferences.rating_wifi or 0)
+    ])
+
+    if total_score > 44:
+        return jsonify(
+            {'error': f'Total score of preferences must be less than or equal to 44, yours is {total_score}'}), 400
+
+    preferences.rating_personal = data.get('rating_personal', preferences.rating_personal)
+    preferences.rating_facilities = data.get('rating_facilities', preferences.rating_facilities)
+    preferences.rating_cleanliness = data.get('rating_cleanliness', preferences.rating_cleanliness)
+    preferences.rating_comfort = data.get('rating_comfort', preferences.rating_comfort)
+    preferences.rating_value_for_money = data.get('rating_value_for_money', preferences.rating_value_for_money)
+    preferences.rating_location = data.get('rating_location', preferences.rating_location)
+    preferences.rating_wifi = data.get('rating_wifi', preferences.rating_wifi)
+
+    db.session.commit()
+
+    return jsonify(preferences.to_dict()), 200
 
 
 # Property Management
@@ -381,6 +478,12 @@ def add_facility_to_room():
     return jsonify({'message': 'Facility added to room successfully'}), 201
 
 
+@routes_bp.route('/facilities', methods=['GET'])
+def get_facilities():
+    facilities = Facility.query.all()
+    return jsonify([facility.to_dict() for facility in facilities]), 200
+
+
 @routes_bp.route('/room_facilities/<int:room_id>', methods=['GET'])
 @jwt_required()
 def get_facilities_for_room(room_id):
@@ -428,6 +531,12 @@ def create_reservation():
 def confirm_reservation():
     data = request.get_json()
     payment_id = data.get('payment_id')
+    room_id = data.get('room_id')
+    check_in_date = data.get('check_in_date')
+    check_out_date = data.get('check_out_date')
+
+    if not payment_id or not room_id or not check_in_date or not check_out_date:
+        return jsonify({'error': 'Missing required fields'}), 400
 
     # Confirmarea plății
     payment_result = confirm_payment(payment_id)
@@ -435,15 +544,20 @@ def confirm_reservation():
         return jsonify({'error': payment_result['error']}), 500
 
     # Crearea rezervării doar după confirmarea plății
-    new_reservation = Reservation(
-        user_id=get_jwt_identity(),
-        room_id=data['room_id'],
-        check_in_date=datetime.strptime(data['check_in_date'], '%d-%m-%Y'),
-        check_out_date=datetime.strptime(data['check_out_date'], '%d-%m-%Y'),
-        status='confirmed'
-    )
-    db.session.add(new_reservation)
-    db.session.commit()
+    try:
+        new_reservation = Reservation(
+            user_id=get_jwt_identity(),
+            room_id=room_id,
+            check_in_date=datetime.strptime(check_in_date, '%d-%m-%Y'),
+            check_out_date=datetime.strptime(check_out_date, '%d-%m-%Y'),
+            status='confirmed'
+        )
+        db.session.add(new_reservation)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
     return jsonify({'message': 'Reservation created and payment confirmed successfully'}), 201
 
 
@@ -472,16 +586,14 @@ def get_reservation(reservation_id):
 @routes_bp.route('/cancel_reservation/<int:reservation_id>', methods=['POST'])
 @jwt_required()
 @check_reservation_owner_or_superadmin
-def cancel_reservation():
-    data = request.get_json()
-    reservation_id = data.get('reservation_id')
+def cancel_reservation(reservation_id):
     reservation = Reservation.query.get_or_404(reservation_id)
     user_id = get_jwt_identity()
 
     if reservation.user_id != user_id:
         return jsonify({'message': 'Unauthorized'}), 403
 
-    # Verifică dacă anularea este cu cel puțin 30 de zile înainte de check-in
+    # Verifică dacă anularea este cu cel puțin 15 de zile înainte de check-in
     if (reservation.check_in_date - datetime.now(timezone.utc)).days < 15:
         return jsonify({'message': 'Cancellation period has passed'}), 400
 
@@ -596,108 +708,3 @@ def delete_favorite(favorite_id):
     db.session.delete(favorite)
     db.session.commit()
     return jsonify({'message': 'Favorite deleted successfully'}), 200
-
-
-# Facility Management (Admin)
-@routes_bp.route('/facilities', methods=['GET'])
-def get_facilities():
-    facilities = Facility.query.all()
-    return jsonify([facility.to_dict() for facility in facilities]), 200
-
-
-# User Preferences Management
-@routes_bp.route('/user/preferences', methods=['POST'])
-@jwt_required()
-def create_user_preferences():
-    user_id = get_jwt_identity()
-    data = request.get_json()
-
-    total_score = sum([
-        data.get('rating_personal', 0),
-        data.get('rating_facilities', 0),
-        data.get('rating_cleanliness', 0),
-        data.get('rating_comfort', 0),
-        data.get('rating_value_for_money', 0),
-        data.get('rating_location', 0),
-        data.get('rating_wifi', 0)
-    ])
-
-    if total_score > 44:
-        return jsonify(
-            {'error': f'Total score of preferences must be less than or equal to 44, yours is {total_score}'}), 400
-
-    preferences = UserPreferences(
-        user_id=user_id,
-        rating_personal=data.get('rating_personal'),
-        rating_facilities=data.get('rating_facilities'),
-        rating_cleanliness=data.get('rating_cleanliness'),
-        rating_comfort=data.get('rating_comfort'),
-        rating_value_for_money=data.get('rating_value_for_money'),
-        rating_location=data.get('rating_location'),
-        rating_wifi=data.get('rating_wifi')
-    )
-
-    db.session.add(preferences)
-    db.session.commit()
-
-    return jsonify(preferences.to_dict()), 201
-
-
-@routes_bp.route('/user/preferences', methods=['PUT'])
-@jwt_required()
-def update_user_preferences():
-    user_id = get_jwt_identity()
-    data = request.get_json()
-
-    preferences = UserPreferences.query.filter_by(user_id=user_id).first()
-    if not preferences:
-        return jsonify({'error': 'Preferences not found'}), 404
-
-    total_score = sum([
-        data.get('rating_personal', preferences.rating_personal or 0),
-        data.get('rating_facilities', preferences.rating_facilities or 0),
-        data.get('rating_cleanliness', preferences.rating_cleanliness or 0),
-        data.get('rating_comfort', preferences.rating_comfort or 0),
-        data.get('rating_value_for_money', preferences.rating_value_for_money or 0),
-        data.get('rating_location', preferences.rating_location or 0),
-        data.get('rating_wifi', preferences.rating_wifi or 0)
-    ])
-
-    if total_score > 44:
-        return jsonify(
-            {'error': f'Total score of preferences must be less than or equal to 44, yours is {total_score}'}), 400
-
-    preferences.rating_personal = data.get('rating_personal', preferences.rating_personal)
-    preferences.rating_facilities = data.get('rating_facilities', preferences.rating_facilities)
-    preferences.rating_cleanliness = data.get('rating_cleanliness', preferences.rating_cleanliness)
-    preferences.rating_comfort = data.get('rating_comfort', preferences.rating_comfort)
-    preferences.rating_value_for_money = data.get('rating_value_for_money', preferences.rating_value_for_money)
-    preferences.rating_location = data.get('rating_location', preferences.rating_location)
-    preferences.rating_wifi = data.get('rating_wifi', preferences.rating_wifi)
-
-    db.session.commit()
-
-    return jsonify(preferences.to_dict()), 200
-
-
-# Management Admin
-@routes_bp.route('/admin/users/<int:user_id>/role', methods=['PUT'])
-@jwt_required()
-@role_required('superadmin')
-def update_user_role(user_id):
-    data = request.get_json()
-    user = User.query.get_or_404(user_id)
-    new_role = data.get('role')
-    current_user_id = get_jwt_identity()
-
-    if new_role not in ['user', 'owner', 'superadmin']:
-        return jsonify({'message': 'Invalid role specified'}), 400
-
-    # Prevenire schimbare rol propriu de la superadmin la altceva
-    if user.id == current_user_id and user.role == 'superadmin' and new_role != 'superadmin':
-        return jsonify({'message': 'Cannot change own role from superadmin to another role'}), 400
-
-    user.role = new_role
-    db.session.commit()
-
-    return jsonify({'message': 'User role updated successfully'}), 200
