@@ -1,15 +1,25 @@
+import os
 from datetime import datetime, timezone
 from functools import wraps
 import stripe
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from werkzeug.utils import secure_filename
+
 from .ai import recommend_properties, predict_price_for_room
 from .models import User, Property, Room, Reservation, Review, Favorite, db, Facility, RoomFacility, UserPreferences
 from .payments import create_payment_intent, confirm_payment, refund_payment
 
-stripe.api_key = current_app.config['STRIPE_API_KEY']
+stripe.api_key = app.config['STRIPE_API_KEY']
 
 routes_bp = Blueprint('routes', __name__)
+
+
+# Configurare pentru directorul de încărcare
+UPLOAD_FOLDER = 'uploads/'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
 # Decorators for access control
@@ -94,6 +104,7 @@ def check_reservation_owner_or_superadmin(f):
     return decorated_function
 
 
+# Management Admin
 # Management Admin
 @routes_bp.route('/admin/users/<int:user_id>/role', methods=['PUT'])
 @jwt_required()
@@ -229,6 +240,16 @@ def update_user_preferences():
 def create_property():
     user_id = get_jwt_identity()
     data = request.get_json()
+
+    images = request.files.getlist('images')  # Obține lista de fișiere
+
+    image_paths = []
+    for image in images:
+        filename = secure_filename(image.filename)
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        image.save(image_path)
+        image_paths.append(image_path)
+
     new_property = Property(
         owner_id=user_id,
         name=data['name'],
@@ -245,7 +266,7 @@ def create_property():
         stars=data['stars'],
         type=data['type'],
         description=data['description'],
-        images=data['images']
+        images=image_paths
     )
     db.session.add(new_property)
     db.session.commit()
@@ -254,6 +275,7 @@ def create_property():
 
 
 @routes_bp.route('/filter_properties', methods=['GET'])
+@jwt_required(optional=True)
 def filter_properties():
     user_id = get_jwt_identity()
     user_preferences = UserPreferences.query.filter_by(user_id=user_id).first()
@@ -312,11 +334,15 @@ def filter_properties():
 
     available_properties = properties_query.all()
     recommendations = recommend_properties(
-        user_id,
-        user_ratings,
+        user_id=user_id,
+        user_ratings=user_ratings,
         max_budget=price_max,
-        preferred_region=region
+        preferred_region=region,
+        check_in_date=check_in_date,
+        check_out_date=check_out_date
     ) if user_preferences else []
+
+    recommendations = recommendations[:5]
 
     sorted_properties = sorted(available_properties, key=lambda x: x.id not in [rec['id'] for rec in recommendations])
 
@@ -331,10 +357,31 @@ def filter_properties():
 @check_property_owner
 def update_property(property_id):
     user_id = get_jwt_identity()
-    data = request.get_json()
+    data = request.form
     property_item = Property.query.get_or_404(property_id)
     if property_item.owner_id != user_id:
         return jsonify({'message': 'Unauthorized'}), 403
+
+    images_to_add = request.files.getlist('images')
+    images_to_remove = data.getlist('remove_images')
+
+    if images_to_add:
+        if not property_item.images:
+            property_item.images = []
+        for image in images_to_add:
+            filename = secure_filename(image.filename)
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            image.save(image_path)
+            property_item.images.append(image_path)
+
+    if images_to_remove:
+        for image_path in images_to_remove:
+            if image_path in property_item.images:
+                property_item.images.remove(image_path)
+                # Optional: șterge fișierul de pe disc
+                if os.path.exists(image_path):
+                    os.remove(image_path)
+
     property_item.name = data['name']
     property_item.address = data['address']
     property_item.postal_code = data['postal_code']
@@ -349,7 +396,6 @@ def update_property(property_id):
     property_item.stars = data['stars']
     property_item.type = data['type']
     property_item.description = data['description']
-    property_item.images = data['images']
     db.session.commit()
 
     return jsonify({'message': 'Property updated successfully'}), 200

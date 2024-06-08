@@ -34,7 +34,7 @@ class PropertySchema(Schema):
     stars = fields.Int()
     type = fields.Str(required=True)
     description = fields.Str()
-    images = fields.Str()
+    images = fields.List(fields.Str())
     cluster = fields.Int()
     rooms = fields.List(fields.Nested(lambda: RoomSchema(exclude=('property',))))
     reservations = fields.List(fields.Nested(lambda: ReservationSchema(exclude=('property',))))
@@ -152,4 +152,3 @@ class UserPreferencesSchema(Schema):
 
     class Meta:
         unknown = EXCLUDE
-

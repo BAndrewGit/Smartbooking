@@ -1,3 +1,5 @@
+from sqlalchemy import JSON
+
 from . import db
 from datetime import datetime, timezone
 from enum import Enum
@@ -39,7 +41,7 @@ class User(db.Model):
     reservations = db.relationship('Reservation', backref='user', cascade='all, delete-orphan')
     reviews = db.relationship('Review', backref='user', cascade='all, delete-orphan')
     favorites = db.relationship('Favorite', backref='user', cascade='all, delete-orphan')
-    preferences = db.relationship('UserPreferences', backref='user_preferences', uselist=False)  # Numele backref schimbat
+    preferences = db.relationship('UserPreferences', back_populates='user', uselist=False)
 
     def to_dict(self):
         return {
@@ -68,7 +70,7 @@ class Property(db.Model):
     stars = db.Column(db.Integer)
     type = db.Column(db.Enum(PropertyType), nullable=False)
     description = db.Column(db.Text)
-    images = db.Column(db.String(200))
+    images = db.Column(JSON, nullable=True)
     cluster = db.Column(db.Integer)
 
     rooms = db.relationship('Room', backref='property', cascade='all, delete-orphan')
@@ -247,7 +249,7 @@ class UserPreferences(db.Model):
     rating_location = db.Column(db.Float, nullable=True)
     rating_wifi = db.Column(db.Float, nullable=True)
 
-    user = db.relationship('User', backref='preferences_backref', uselist=False)
+    user = db.relationship('User', back_populates='preferences')
 
     def to_dict(self):
         return {
