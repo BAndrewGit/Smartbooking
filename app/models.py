@@ -142,11 +142,14 @@ class RoomFacility(db.Model):
     facility_id = db.Column(db.Integer, db.ForeignKey('facility.id'), primary_key=True)
     presence = db.Column(db.Boolean, default=True)
 
+    facility = db.relationship('Facility', backref='room_facilities')
+
     def to_dict(self):
         return {
             'room_id': self.room_id,
             'facility_id': self.facility_id,
-            'presence': self.presence
+            'presence': self.presence,
+            'facility_name': self.facility.name
         }
 
 

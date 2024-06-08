@@ -142,8 +142,6 @@ def predict_price_for_room(room_id):
         return {'error': str(e)}
 
 
-import pandas as pd
-
 def recommend_properties(user_id, user_ratings, max_budget=None, preferred_region=None, check_in_date=None, check_out_date=None):
     try:
         # Obținem lista de cazări favorite ale utilizatorului curent

@@ -1,11 +1,11 @@
 import os
+import json
 from datetime import datetime, timezone
 from functools import wraps
 import stripe
 from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from werkzeug.utils import secure_filename
-
 from .ai import recommend_properties, predict_price_for_room
 from .models import User, Property, Room, Reservation, Review, Favorite, db, Facility, RoomFacility, UserPreferences
 from .payments import create_payment_intent, confirm_payment, refund_payment
@@ -239,7 +239,7 @@ def update_user_preferences():
 @role_required('owner')
 def create_property():
     user_id = get_jwt_identity()
-    data = request.get_json()
+    data = request.form.to_dict()
 
     images = request.files.getlist('images')  # Obține lista de fișiere
 
@@ -257,16 +257,16 @@ def create_property():
         postal_code=data['postal_code'],
         country=data['country'],
         region=data['region'],
-        latitude=data['latitude'],
-        longitude=data['longitude'],
+        latitude=float(data['latitude']),
+        longitude=float(data['longitude']),
         check_in=data['check_in'],
         check_out=data['check_out'],
-        num_reviews=data['num_reviews'],
-        availability=data['availability'],
-        stars=data['stars'],
+        num_reviews=int(data['num_reviews']),
+        availability=bool(data['availability']),
+        stars=int(data['stars']),
         type=data['type'],
         description=data['description'],
-        images=image_paths
+        images=json.dumps(image_paths)  # Salvăm ca șir JSON
     )
     db.session.add(new_property)
     db.session.commit()
@@ -357,17 +357,22 @@ def filter_properties():
 @check_property_owner
 def update_property(property_id):
     user_id = get_jwt_identity()
-    data = request.form
+    data = request.json  # Use request.json to read JSON data
+
     property_item = Property.query.get_or_404(property_id)
     if property_item.owner_id != user_id:
         return jsonify({'message': 'Unauthorized'}), 403
 
     images_to_add = request.files.getlist('images')
-    images_to_remove = data.getlist('remove_images')
+    images_to_remove = data.get('remove_images', [])
+
+    # Convertim șirul de imagini la listă, dacă este cazul
+    if property_item.images:
+        property_item.images = json.loads(property_item.images)
+    else:
+        property_item.images = []
 
     if images_to_add:
-        if not property_item.images:
-            property_item.images = []
         for image in images_to_add:
             filename = secure_filename(image.filename)
             image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -382,20 +387,25 @@ def update_property(property_id):
                 if os.path.exists(image_path):
                     os.remove(image_path)
 
-    property_item.name = data['name']
-    property_item.address = data['address']
-    property_item.postal_code = data['postal_code']
-    property_item.country = data['country']
-    property_item.region = data['region']
-    property_item.latitude = data['latitude']
-    property_item.longitude = data['longitude']
-    property_item.check_in = data['check_in']
-    property_item.check_out = data['check_out']
-    property_item.num_reviews = data['num_reviews']
-    property_item.availability = data['availability']
-    property_item.stars = data['stars']
-    property_item.type = data['type']
-    property_item.description = data['description']
+    # Convertim lista de imagini în șir JSON
+    property_item.images = json.dumps(property_item.images)
+
+    # Updating property fields with received data
+    property_item.name = data.get('name', property_item.name)
+    property_item.address = data.get('address', property_item.address)
+    property_item.postal_code = data.get('postal_code', property_item.postal_code)
+    property_item.country = data.get('country', property_item.country)
+    property_item.region = data.get('region', property_item.region)
+    property_item.latitude = data.get('latitude', property_item.latitude)
+    property_item.longitude = data.get('longitude', property_item.longitude)
+    property_item.check_in = data.get('check_in', property_item.check_in)
+    property_item.check_out = data.get('check_out', property_item.check_out)
+    property_item.num_reviews = data.get('num_reviews', property_item.num_reviews)
+    property_item.availability = data.get('availability', property_item.availability)
+    property_item.stars = data.get('stars', property_item.stars)
+    property_item.type = data.get('type', property_item.type)
+    property_item.description = data.get('description', property_item.description)
+
     db.session.commit()
 
     return jsonify({'message': 'Property updated successfully'}), 200
@@ -421,6 +431,13 @@ def delete_property(property_id):
 def create_room():
     user_id = get_jwt_identity()
     data = request.get_json()
+
+    # Verifică dacă toate datele necesare sunt furnizate
+    required_fields = ['property_id', 'room_type', 'persons', 'price', 'currency']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({'message': f'Missing required field: {field}'}), 400
+
     property_item = Property.query.get_or_404(data['property_id'])
     if property_item.owner_id != user_id:
         return jsonify({'message': 'Unauthorized'}), 403
@@ -434,6 +451,12 @@ def create_room():
     )
     db.session.add(new_room)
     db.session.commit()
+
+    # Inițializează toate facilitățile la False
+    facilities = Facility.query.all()
+    for facility in facilities:
+        room_facility = RoomFacility(room_id=new_room.id, facility_id=facility.id, presence=False)
+        db.session.add(room_facility)
 
     # Apelarea funcției de predicție a prețului și actualizarea ratingului
     price_prediction = predict_price_for_room(new_room.id)
@@ -466,20 +489,46 @@ def get_room(room_id):
 def update_room(room_id):
     user_id = get_jwt_identity()
     data = request.get_json()
-    room = Room.query.get_or_404(room_id)
-    property_item = Property.query.get_or_404(room.property_id)
+
+    print(f"Received request to update room with ID: {room_id} by user: {user_id}")
+
+    room = Room.query.get(room_id)
+    if not room:
+        print(f"Room with ID: {room_id} not found.")
+        return jsonify({'message': 'Room not found'}), 404
+
+    property_item = Property.query.get(room.property_id)
+    if not property_item:
+        print(f"Property with ID: {room.property_id} not found.")
+        return jsonify({'message': 'Property not found'}), 404
+
     if property_item.owner_id != user_id:
+        print(f"User {user_id} unauthorized to update room with ID: {room_id}")
         return jsonify({'message': 'Unauthorized'}), 403
 
-    room.room_type = data['room_type']
-    room.persons = data['persons']
-    room.price = data['price']
-    room.currency = data['currency']
+    # Actualizează detaliile camerei
+    room.room_type = data.get('room_type', room.room_type)
+    room.persons = data.get('persons', room.persons)
+    room.price = data.get('price', room.price)
+    room.currency = data.get('currency', room.currency)
+
+    # Actualizează facilitățile camerei, dacă sunt furnizate în request
+    facilities_to_update = data.get('facilities', None)
+    if facilities_to_update:
+        for facility_id, presence in facilities_to_update.items():
+            room_facility = RoomFacility.query.filter_by(room_id=room_id, facility_id=facility_id).first()
+            if room_facility:
+                room_facility.presence = presence
+            else:
+                room_facility = RoomFacility(room_id=room_id, facility_id=facility_id, presence=presence)
+                db.session.add(room_facility)
+
     db.session.commit()
 
     # Apelarea funcției de predicție a prețului și actualizarea ratingului
-    price_prediction = predict_price_for_room(room.id)
+    price_prediction = predict_price_for_room(room_id)
     if 'error' in price_prediction:
+        print(f"Error predicting price for room ID: {room_id} - {price_prediction['error']}")
         return jsonify({'error': price_prediction['error']}), 500
 
     db.session.commit()  # Confirmăm actualizarea camerei doar după obținerea ratingului
@@ -491,6 +540,10 @@ def update_room(room_id):
 @jwt_required()
 @check_property_owner_or_superadmin
 def delete_room(room_id):
+    print(f"Received DELETE request for room_id: {room_id}")  # Debug line
+    print(f"Request headers: {request.headers}")  # Debug line for headers
+    print(f"Request data: {request.data}")  # Debug line for body (should be empty)
+
     user_id = get_jwt_identity()
     room = Room.query.get_or_404(room_id)
     property_item = Property.query.get_or_404(room.property_id)
@@ -501,39 +554,9 @@ def delete_room(room_id):
     return jsonify({'message': 'Room deleted successfully'}), 200
 
 
-# Room Facility Management (Admin)
-@routes_bp.route('/room_facilities', methods=['POST'])
-@jwt_required()
-@check_property_owner
-def add_facility_to_room():
-    user_id = get_jwt_identity()
-    data = request.get_json()
-    room = Room.query.get_or_404(data['room_id'])
-    property_item = Property.query.get_or_404(room.property_id)
-    if property_item.owner_id != user_id:
-        return jsonify({'message': 'Unauthorized'}), 403
-
-    facility = RoomFacility(
-        room_id=room.id,
-        facility_id=data['facility_id'],
-        presence=data.get('presence', True)
-    )
-    db.session.add(facility)
-    db.session.commit()
-
-    return jsonify({'message': 'Facility added to room successfully'}), 201
-
-
 @routes_bp.route('/facilities', methods=['GET'])
 def get_facilities():
     facilities = Facility.query.all()
-    return jsonify([facility.to_dict() for facility in facilities]), 200
-
-
-@routes_bp.route('/room_facilities/<int:room_id>', methods=['GET'])
-@jwt_required()
-def get_facilities_for_room(room_id):
-    facilities = RoomFacility.query.filter_by(room_id=room_id).all()
     return jsonify([facility.to_dict() for facility in facilities]), 200
 
 

@@ -57,22 +57,7 @@ class RoomFacilitySchema(Schema):
     room_id = fields.Int(required=True)
     facility_id = fields.Int(required=True)
     presence = fields.Bool(required=True)
-    facility = fields.Nested(lambda: FacilitySchema(only=('id', 'name')))
-
-    class Meta:
-        unknown = EXCLUDE
-
-
-class RoomSchema(Schema):
-    id = fields.Int(dump_only=True)
-    property_id = fields.Int(required=True)
-    room_type = fields.Str()
-    persons = fields.Int()
-    price = fields.Float(required=True)
-    currency = fields.Str(required=True)
-    price_rating = fields.Str()
-    reservations = fields.List(fields.Nested(lambda: ReservationSchema(exclude=('room',))))
-    facilities = fields.List(fields.Nested(lambda: RoomFacilitySchema(exclude=('room',))))
+    facility = fields.Nested(FacilitySchema, dump_only=True)
 
     class Meta:
         unknown = EXCLUDE
@@ -88,6 +73,21 @@ class ReservationSchema(Schema):
     user = fields.Nested(lambda: UserSchema(only=('id', 'name', 'email')))
     room = fields.Nested(lambda: RoomSchema(only=('id', 'room_type', 'persons')))
     property = fields.Nested(lambda: PropertySchema(only=('id', 'name', 'address')))
+
+    class Meta:
+        unknown = EXCLUDE
+
+
+class RoomSchema(Schema):
+    id = fields.Int(dump_only=True)
+    property_id = fields.Int(required=True)
+    room_type = fields.Str()
+    persons = fields.Int()
+    price = fields.Float(required=True)
+    currency = fields.Str(required=True)
+    price_rating = fields.Str()
+    reservations = fields.List(fields.Nested(ReservationSchema, exclude=('room',)))
+    facilities = fields.List(fields.Nested(RoomFacilitySchema, exclude=('room',)))
 
     class Meta:
         unknown = EXCLUDE

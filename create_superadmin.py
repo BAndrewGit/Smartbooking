@@ -6,11 +6,13 @@ from app.models import User
 app = create_app()
 app.app_context().push()
 
+
 def delete_user(email):
     user = User.query.filter_by(email=email).first()
     if user:
         db.session.delete(user)
         db.session.commit()
+
 
 def register_user(name, email, password):
     registration_data = {
@@ -24,6 +26,7 @@ def register_user(name, email, password):
         return None
     return response.json()
 
+
 def login_user(email, password):
     login_data = {
         'email': email,
@@ -35,12 +38,14 @@ def login_user(email, password):
         return None
     return response.json()['access_token']
 
+
 def update_user_role(email, new_role):
     user = User.query.filter_by(email=email).first()
     if user:
         user.role = new_role
         db.session.commit()
         print(f"User role updated to {new_role}")
+
 
 def create_superadmin():
     email = 'admin.andrew@gmail.com'
@@ -63,6 +68,7 @@ def create_superadmin():
     # Actualizează rolul utilizatorului la superadmin
     update_user_role(email, 'superadmin')
     print("Superadmin created and role updated successfully")
+
 
 if __name__ == "__main__":
     create_superadmin()
