@@ -10,7 +10,10 @@ Werkzeug~=3.0.3
 bcrypt~=4.1.3
 itsdangerous~=2.2.0
 pandas~=2.2.2
-python-dotenv
-stripe
-scikit-learn
+python-dotenv~=1.0.1
+stripe~=9.9.0
+scikit-learn~=1.2.2
 pymysql
+SQLAlchemy~=2.0.30
+alembic~=1.13.1
+requests~=2.32.2

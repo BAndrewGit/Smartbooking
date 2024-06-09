@@ -7,7 +7,7 @@ from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from werkzeug.utils import secure_filename
 from .ai import recommend_properties, predict_price_for_room
-from .models import User, Property, Room, Reservation, Review, Favorite, db, Facility, RoomFacility, UserPreferences
+from .models import User, Property, Room, Reservation, Review, Favorite, db, UserPreferences
 from .payments import create_payment_intent, confirm_payment, refund_payment
 
 stripe.api_key = app.config['STRIPE_API_KEY']
@@ -104,7 +104,6 @@ def check_reservation_owner_or_superadmin(f):
     return decorated_function
 
 
-# Management Admin
 # Management Admin
 @routes_bp.route('/admin/users/<int:user_id>/role', methods=['PUT'])
 @jwt_required()
@@ -297,7 +296,7 @@ def filter_properties():
     region = request.args.get('region', None)
     price_max = request.args.get('price_max', type=float)
     num_persons = request.args.get('num_persons', type=int)
-    facilities = request.args.getlist('facilities', type=int)
+    facilities = request.args.getlist('facilities')
 
     try:
         check_in_date = datetime.strptime(check_in, '%d-%m-%Y')
@@ -327,10 +326,7 @@ def filter_properties():
 
     if facilities:
         for facility in facilities:
-            properties_query = properties_query.join(RoomFacility).filter(
-                RoomFacility.facility_id == facility,
-                RoomFacility.presence == True
-            )
+            properties_query = properties_query.filter(getattr(Room, facility) == True)
 
     available_properties = properties_query.all()
     recommendations = recommend_properties(
@@ -417,10 +413,13 @@ def update_property(property_id):
 def delete_property(property_id):
     user_id = get_jwt_identity()
     property_item = Property.query.get_or_404(property_id)
+
     if property_item.owner_id != user_id:
         return jsonify({'message': 'Unauthorized'}), 403
+
     db.session.delete(property_item)
     db.session.commit()
+
     return jsonify({'message': 'Property deleted successfully'}), 200
 
 
@@ -447,16 +446,52 @@ def create_room():
         room_type=data['room_type'],
         persons=data['persons'],
         price=data['price'],
-        currency=data['currency']
+        currency=data['currency'],
+        vedere_la_oras=data.get('vedere_la_oras', False),
+        menaj_zilnic=data.get('menaj_zilnic', False),
+        canale_prin_satelit=data.get('canale_prin_satelit', False),
+        zona_de_luat_masa_in_aer_liber=data.get('zona_de_luat_masa_in_aer_liber', False),
+        cada=data.get('cada', False),
+        facilitati_de_calcat=data.get('facilitati_de_calcat', False),
+        izolare_fonica=data.get('izolare_fonica', False),
+        terasa_la_soare=data.get('terasa_la_soare', False),
+        pardoseala_de_gresie_marmura=data.get('pardoseala_de_gresie_marmura', False),
+        papuci_de_casa=data.get('papuci_de_casa', False),
+        uscator_de_rufe=data.get('uscator_de_rufe', False),
+        animale_de_companie=data.get('animale_de_companie', False),
+        incalzire=data.get('incalzire', False),
+        birou=data.get('birou', False),
+        mobilier_exterior=data.get('mobilier_exterior', False),
+        alarma_de_fum=data.get('alarma_de_fum', False),
+        vedere_la_gradina=data.get('vedere_la_gradina', False),
+        cuptor=data.get('cuptor', False),
+        cuptor_cu_microunde=data.get('cuptor_cu_microunde', False),
+        zona_de_relaxare=data.get('zona_de_relaxare', False),
+        canapea=data.get('canapea', False),
+        intrare_privata=data.get('intrare_privata', False),
+        fier_de_calcat=data.get('fier_de_calcat', False),
+        masina_de_cafea=data.get('masina_de_cafea', False),
+        plita_de_gatit=data.get('plita_de_gatit', False),
+        extinctoare=data.get('extinctoare', False),
+        cana_fierbator=data.get('cana_fierbator', False),
+        gradina=data.get('gradina', False),
+        ustensile_de_bucatarie=data.get('ustensile_de_bucatarie', False),
+        masina_de_spalat=data.get('masina_de_spalat', False),
+        balcon=data.get('balcon', False),
+        pardoseala_de_lemn_sau_parchet=data.get('pardoseala_de_lemn_sau_parchet', False),
+        aparat_pentru_prepararea_de_ceai_cafea=data.get('aparat_pentru_prepararea_de_ceai_cafea', False),
+        zona_de_luat_masa=data.get('zona_de_luat_masa', False),
+        canale_prin_cablu=data.get('canale_prin_cablu', False),
+        aer_conditionat=data.get('aer_conditionat', False),
+        masa=data.get('masa', False),
+        suport_de_haine=data.get('suport_de_haine', False),
+        cada_sau_dus=data.get('cada_sau_dus', False),
+        frigider=data.get('frigider', False),
+        mic_dejun=data.get('mic_dejun', False)
     )
+
     db.session.add(new_room)
     db.session.commit()
-
-    # Inițializează toate facilitățile la False
-    facilities = Facility.query.all()
-    for facility in facilities:
-        room_facility = RoomFacility(room_id=new_room.id, facility_id=facility.id, presence=False)
-        db.session.add(room_facility)
 
     # Apelarea funcției de predicție a prețului și actualizarea ratingului
     price_prediction = predict_price_for_room(new_room.id)
@@ -513,15 +548,20 @@ def update_room(room_id):
     room.currency = data.get('currency', room.currency)
 
     # Actualizează facilitățile camerei, dacă sunt furnizate în request
-    facilities_to_update = data.get('facilities', None)
-    if facilities_to_update:
-        for facility_id, presence in facilities_to_update.items():
-            room_facility = RoomFacility.query.filter_by(room_id=room_id, facility_id=facility_id).first()
-            if room_facility:
-                room_facility.presence = presence
-            else:
-                room_facility = RoomFacility(room_id=room_id, facility_id=facility_id, presence=presence)
-                db.session.add(room_facility)
+    facility_fields = [
+        'vedere_la_oras', 'menaj_zilnic', 'canale_prin_satelit', 'zona_de_luat_masa_in_aer_liber',
+        'cada', 'facilitati_de_calcat', 'izolare_fonica', 'terasa_la_soare', 'pardoseala_de_gresie_marmura',
+        'papuci_de_casa', 'uscator_de_rufe', 'animale_de_companie', 'incalzire', 'birou', 'mobilier_exterior',
+        'alarma_de_fum', 'vedere_la_gradina', 'cuptor', 'cuptor_cu_microunde', 'zona_de_relaxare', 'canapea',
+        'intrare_privata', 'fier_de_calcat', 'masina_de_cafea', 'plita_de_gatit', 'extinctoare', 'cana_fierbator',
+        'gradina', 'ustensile_de_bucatarie', 'masina_de_spalat', 'balcon', 'pardoseala_de_lemn_sau_parchet',
+        'aparat_pentru_prepararea_de_ceai_cafea', 'zona_de_luat_masa', 'canale_prin_cablu', 'aer_conditionat',
+        'masa', 'suport_de_haine', 'cada_sau_dus', 'frigider', 'mic_dejun'
+    ]
+
+    for field in facility_fields:
+        if field in data:
+            setattr(room, field, data[field])
 
     db.session.commit()
 
@@ -536,28 +576,24 @@ def update_room(room_id):
     return jsonify(room.to_dict()), 200
 
 
-@routes_bp.route('/rooms/<int:room_id>', methods=['DELETE'])
+@routes_bp.route('/rooms/delete', methods=['DELETE'])
 @jwt_required()
 @check_property_owner_or_superadmin
 def delete_room(room_id):
-    print(f"Received DELETE request for room_id: {room_id}")  # Debug line
-    print(f"Request headers: {request.headers}")  # Debug line for headers
-    print(f"Request data: {request.data}")  # Debug line for body (should be empty)
-
     user_id = get_jwt_identity()
     room = Room.query.get_or_404(room_id)
-    property_item = Property.query.get_or_404(room.property_id)
-    if property_item.owner_id != user_id:
+    property_item = Property.query.get(room.property_id)
+
+    if not property_item:
+        return jsonify({'message': 'Property not found'}), 404
+
+    if property_item.owner_id != user_id and not check_property_owner_or_superadmin(user_id, property_item):
         return jsonify({'message': 'Unauthorized'}), 403
+
     db.session.delete(room)
     db.session.commit()
+
     return jsonify({'message': 'Room deleted successfully'}), 200
-
-
-@routes_bp.route('/facilities', methods=['GET'])
-def get_facilities():
-    facilities = Facility.query.all()
-    return jsonify([facility.to_dict() for facility in facilities]), 200
 
 
 # Reservation Management

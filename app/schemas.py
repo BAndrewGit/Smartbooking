@@ -45,24 +45,6 @@ class PropertySchema(Schema):
         unknown = EXCLUDE
 
 
-class FacilitySchema(Schema):
-    id = fields.Int(dump_only=True)
-    name = fields.Str(required=True)
-
-    class Meta:
-        unknown = EXCLUDE
-
-
-class RoomFacilitySchema(Schema):
-    room_id = fields.Int(required=True)
-    facility_id = fields.Int(required=True)
-    presence = fields.Bool(required=True)
-    facility = fields.Nested(FacilitySchema, dump_only=True)
-
-    class Meta:
-        unknown = EXCLUDE
-
-
 class ReservationSchema(Schema):
     id = fields.Int(dump_only=True)
     user_id = fields.Int(required=True)
@@ -87,7 +69,48 @@ class RoomSchema(Schema):
     currency = fields.Str(required=True)
     price_rating = fields.Str()
     reservations = fields.List(fields.Nested(ReservationSchema, exclude=('room',)))
-    facilities = fields.List(fields.Nested(RoomFacilitySchema, exclude=('room',)))
+
+    vedere_la_oras = fields.Bool()
+    menaj_zilnic = fields.Bool()
+    canale_prin_satelit = fields.Bool()
+    zona_de_luat_masa_in_aer_liber = fields.Bool()
+    cada = fields.Bool()
+    facilitati_de_calcat = fields.Bool()
+    izolare_fonica = fields.Bool()
+    terasa_la_soare = fields.Bool()
+    pardoseala_de_gresie_marmura = fields.Bool()
+    papuci_de_casa = fields.Bool()
+    uscator_de_rufe = fields.Bool()
+    animale_de_companie = fields.Bool()
+    incalzire = fields.Bool()
+    birou = fields.Bool()
+    mobilier_exterior = fields.Bool()
+    alarma_de_fum = fields.Bool()
+    vedere_la_gradina = fields.Bool()
+    cuptor = fields.Bool()
+    cuptor_cu_microunde = fields.Bool()
+    zona_de_relaxare = fields.Bool()
+    canapea = fields.Bool()
+    intrare_privata = fields.Bool()
+    fier_de_calcat = fields.Bool()
+    masina_de_cafea = fields.Bool()
+    plita_de_gatit = fields.Bool()
+    extinctoare = fields.Bool()
+    cana_fierbator = fields.Bool()
+    gradina = fields.Bool()
+    ustensile_de_bucatarie = fields.Bool()
+    masina_de_spalat = fields.Bool()
+    balcon = fields.Bool()
+    pardoseala_de_lemn_sau_parchet = fields.Bool()
+    aparat_pentru_prepararea_de_ceai_cafea = fields.Bool()
+    zona_de_luat_masa = fields.Bool()
+    canale_prin_cablu = fields.Bool()
+    aer_conditionat = fields.Bool()
+    masa = fields.Bool()
+    suport_de_haine = fields.Bool()
+    cada_sau_dus = fields.Bool()
+    frigider = fields.Bool()
+    mic_dejun = fields.Bool()
 
     class Meta:
         unknown = EXCLUDE

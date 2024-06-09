@@ -1,5 +1,4 @@
 from sqlalchemy import JSON
-
 from . import db
 from datetime import datetime, timezone
 from enum import Enum
@@ -101,17 +100,6 @@ class Property(db.Model):
         }
 
 
-class Facility(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'name': self.name
-        }
-
-
 class Room(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     property_id = db.Column(db.Integer, db.ForeignKey('property.id'), nullable=False)
@@ -122,7 +110,48 @@ class Room(db.Model):
     price_rating = db.Column(db.String(20))
 
     reservations = db.relationship('Reservation', backref='room', cascade='all, delete-orphan')
-    facilities = db.relationship('RoomFacility', backref='room', cascade='all, delete-orphan')
+
+    vedere_la_oras = db.Column(db.Boolean, default=False)
+    menaj_zilnic = db.Column(db.Boolean, default=False)
+    canale_prin_satelit = db.Column(db.Boolean, default=False)
+    zona_de_luat_masa_in_aer_liber = db.Column(db.Boolean, default=False)
+    cada = db.Column(db.Boolean, default=False)
+    facilitati_de_calcat = db.Column(db.Boolean, default=False)
+    izolare_fonica = db.Column(db.Boolean, default=False)
+    terasa_la_soare = db.Column(db.Boolean, default=False)
+    pardoseala_de_gresie_marmura = db.Column(db.Boolean, default=False)
+    papuci_de_casa = db.Column(db.Boolean, default=False)
+    uscator_de_rufe = db.Column(db.Boolean, default=False)
+    animale_de_companie = db.Column(db.Boolean, default=False)
+    incalzire = db.Column(db.Boolean, default=False)
+    birou = db.Column(db.Boolean, default=False)
+    mobilier_exterior = db.Column(db.Boolean, default=False)
+    alarma_de_fum = db.Column(db.Boolean, default=False)
+    vedere_la_gradina = db.Column(db.Boolean, default=False)
+    cuptor = db.Column(db.Boolean, default=False)
+    cuptor_cu_microunde = db.Column(db.Boolean, default=False)
+    zona_de_relaxare = db.Column(db.Boolean, default=False)
+    canapea = db.Column(db.Boolean, default=False)
+    intrare_privata = db.Column(db.Boolean, default=False)
+    fier_de_calcat = db.Column(db.Boolean, default=False)
+    masina_de_cafea = db.Column(db.Boolean, default=False)
+    plita_de_gatit = db.Column(db.Boolean, default=False)
+    extinctoare = db.Column(db.Boolean, default=False)
+    cana_fierbator = db.Column(db.Boolean, default=False)
+    gradina = db.Column(db.Boolean, default=False)
+    ustensile_de_bucatarie = db.Column(db.Boolean, default=False)
+    masina_de_spalat = db.Column(db.Boolean, default=False)
+    balcon = db.Column(db.Boolean, default=False)
+    pardoseala_de_lemn_sau_parchet = db.Column(db.Boolean, default=False)
+    aparat_pentru_prepararea_de_ceai_cafea = db.Column(db.Boolean, default=False)
+    zona_de_luat_masa = db.Column(db.Boolean, default=False)
+    canale_prin_cablu = db.Column(db.Boolean, default=False)
+    aer_conditionat = db.Column(db.Boolean, default=False)
+    masa = db.Column(db.Boolean, default=False)
+    suport_de_haine = db.Column(db.Boolean, default=False)
+    cada_sau_dus = db.Column(db.Boolean, default=False)
+    frigider = db.Column(db.Boolean, default=False)
+    mic_dejun = db.Column(db.Boolean, default=False)
 
     def to_dict(self):
         return {
@@ -133,23 +162,47 @@ class Room(db.Model):
             'price': self.price,
             'currency': self.currency,
             'price_rating': self.price_rating,
-            'facilities': [facility.to_dict() for facility in self.facilities]
-        }
-
-
-class RoomFacility(db.Model):
-    room_id = db.Column(db.Integer, db.ForeignKey('room.id'), primary_key=True)
-    facility_id = db.Column(db.Integer, db.ForeignKey('facility.id'), primary_key=True)
-    presence = db.Column(db.Boolean, default=True)
-
-    facility = db.relationship('Facility', backref='room_facilities')
-
-    def to_dict(self):
-        return {
-            'room_id': self.room_id,
-            'facility_id': self.facility_id,
-            'presence': self.presence,
-            'facility_name': self.facility.name
+            'vedere_la_oras': self.vedere_la_oras,
+            'menaj_zilnic': self.menaj_zilnic,
+            'canale_prin_satelit': self.canale_prin_satelit,
+            'zona_de_luat_masa_in_aer_liber': self.zona_de_luat_masa_in_aer_liber,
+            'cada': self.cada,
+            'facilitati_de_calcat': self.facilitati_de_calcat,
+            'izolare_fonica': self.izolare_fonica,
+            'terasa_la_soare': self.terasa_la_soare,
+            'pardoseala_de_gresie_marmura': self.pardoseala_de_gresie_marmura,
+            'papuci_de_casa': self.papuci_de_casa,
+            'uscator_de_rufe': self.uscator_de_rufe,
+            'animale_de_companie': self.animale_de_companie,
+            'incalzire': self.incalzire,
+            'birou': self.birou,
+            'mobilier_exterior': self.mobilier_exterior,
+            'alarma_de_fum': self.alarma_de_fum,
+            'vedere_la_gradina': self.vedere_la_gradina,
+            'cuptor': self.cuptor,
+            'cuptor_cu_microunde': self.cuptor_cu_microunde,
+            'zona_de_relaxare': self.zona_de_relaxare,
+            'canapea': self.canapea,
+            'intrare_privata': self.intrare_privata,
+            'fier_de_calcat': self.fier_de_calcat,
+            'masina_de_cafea': self.masina_de_cafea,
+            'plita_de_gatit': self.plita_de_gatit,
+            'extinctoare': self.extinctoare,
+            'cana_fierbator': self.cana_fierbator,
+            'gradina': self.gradina,
+            'ustensile_de_bucatarie': self.ustensile_de_bucatarie,
+            'masina_de_spalat': self.masina_de_spalat,
+            'balcon': self.balcon,
+            'pardoseala_de_lemn_sau_parchet': self.pardoseala_de_lemn_sau_parchet,
+            'aparat_pentru_prepararea_de_ceai_cafea': self.aparat_pentru_prepararea_de_ceai_cafea,
+            'zona_de_luat_masa': self.zona_de_luat_masa,
+            'canale_prin_cablu': self.canale_prin_cablu,
+            'aer_conditionat': self.aer_conditionat,
+            'masa': self.masa,
+            'suport_de_haine': self.suport_de_haine,
+            'cada_sau_dus': self.cada_sau_dus,
+            'frigider': self.frigider,
+            'mic_dejun': self.mic_dejun
         }
 
 

@@ -18,16 +18,16 @@ one_hot_columns = [col for col in df.columns if 'type_' in col or 'region_' in c
 
 # Adaugă coloanele predefinite la listă
 selected_columns = one_hot_columns + [
-    'persons', 'stars', 'mic_dejun', 'nota_personal', 'nota_facilităţi', 'nota_curăţenie',
+    'persons', 'stars', 'nota_personal', 'nota_facilităţi', 'nota_curăţenie',
     'nota_confort', 'nota_raport_calitate/preţ', 'nota_locaţie', 'nota_wifi_gratuit', 'num_reviews',
-    'vedere_la_oraș', 'menaj_zilnic', 'canale_prin_satelit', 'zonă_de_luat_masa_în_aer_liber', 'cadă',
-    'facilităţi_de_călcat', 'izolare_fonică', 'terasă_la_soare', 'pardoseală_de_gresie/marmură',
-    'papuci_de_casă', 'uscător_de_rufe', 'animale_de_companie', 'încălzire', 'birou', 'mobilier_exterior',
-    'alarmă_de_fum', 'vedere_la_grădină', 'cuptor', 'cuptor_cu_microunde', 'zonă_de_relaxare', 'canapea',
-    'intrare_privată', 'fier_de_călcat', 'mașină_de_cafea', 'plită_de_gătit', 'extinctoare', 'cană_fierbător',
-    'grădină', 'ustensile_de_bucătărie', 'maşină_de_spălat', 'balcon', 'pardoseală_de_lemn_sau_parchet',
-    'aparat_pentru_prepararea_de_ceai/cafea', 'zonă_de_luat_masa', 'canale_prin_cablu', 'aer_condiţionat',
-    'masă', 'suport_de_haine', 'cadă_sau_duş', 'frigider'
+    'vedere_la_oras', 'menaj_zilnic', 'canale_prin_satelit', 'zona_de_luat_masa_in_aer_liber', 'cada',
+    'facilitati_de_calcat', 'izolare_fonica', 'terasa_la_soare', 'pardoseala_de_gresie/marmura', 'papuci_de_casa',
+    'uscator_de_rufe', 'animale_de_companie', 'incalzire', 'birou', 'mobilier_exterior', 'alarma_de_fum',
+    'vedere_la_gradina', 'cuptor', 'cuptor_cu_microunde', 'zona_de_relaxare', 'canapea', 'intrare_privata',
+    'fier_de_calcat', 'masina_de_cafea', 'plita_de_gatit', 'extinctoare', 'cana_fierbator', 'gradina',
+    'ustensile_de_bucatarie', 'masina_de_spalat', 'balcon', 'pardoseala_de_lemn_sau_parchet',
+    'aparat_pentru_prepararea_de_ceai/cafea', 'zona_de_luat_masa', 'canale_prin_cablu', 'aer_conditionat', 'masa',
+    'suport_de_haine', 'cada_sau_dus', 'frigider', 'mic_dejun'
 ]
 
 # Selectează doar coloanele dorite din DataFrame
@@ -126,7 +126,7 @@ def predict_price_for_room(room_id):
         input_features = scaler.transform(input_features)
         predicted_price = model_rf_optimized.predict(input_features)[0]
 
-        mae_half = 36.40
+        mae_half = 35.00
         actual_price = room.price
         price_rating = calculate_price_rating(predicted_price, actual_price, mae_half)
 
