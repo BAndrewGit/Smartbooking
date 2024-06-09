@@ -42,13 +42,15 @@ def check_property_owner_or_superadmin(f):
     def decorated_function(*args, **kwargs):
         user_id = get_jwt_identity()
         claims = get_jwt()
-        property_id = kwargs.get('property_id') or request.json.get('property_id')
-        property_item = Property.query.get_or_404(property_id)
+        room_id = kwargs.get('room_id')
+        room = Room.query.get_or_404(room_id)
+        property_item = Property.query.get_or_404(room.property_id)
         if property_item.owner_id != user_id and claims['role'] != 'superadmin':
             return jsonify({'message': 'Unauthorized'}), 403
         return f(*args, **kwargs)
 
     return decorated_function
+
 
 
 def check_property_owner(f):
@@ -576,20 +578,11 @@ def update_room(room_id):
     return jsonify(room.to_dict()), 200
 
 
-@routes_bp.route('/rooms/delete', methods=['DELETE'])
+@routes_bp.route('/rooms/<int:room_id>', methods=['DELETE'])
 @jwt_required()
 @check_property_owner_or_superadmin
 def delete_room(room_id):
-    user_id = get_jwt_identity()
     room = Room.query.get_or_404(room_id)
-    property_item = Property.query.get(room.property_id)
-
-    if not property_item:
-        return jsonify({'message': 'Property not found'}), 404
-
-    if property_item.owner_id != user_id and not check_property_owner_or_superadmin(user_id, property_item):
-        return jsonify({'message': 'Unauthorized'}), 403
-
     db.session.delete(room)
     db.session.commit()
 

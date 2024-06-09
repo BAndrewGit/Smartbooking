@@ -111,17 +111,52 @@ def predict_price_for_room(room_id):
             'num_reviews': total_reviews,
             f'type_{property_item.type.value}': True,
             f'region_{property_item.region}': True,
-            f'room_type_{room.room_type}': True
+            f'room_type_{room.room_type}': True,
+            'vedere_la_oras': room.vedere_la_oras,
+            'menaj_zilnic': room.menaj_zilnic,
+            'canale_prin_satelit': room.canale_prin_satelit,
+            'zona_de_luat_masa_in_aer_liber': room.zona_de_luat_masa_in_aer_liber,
+            'cada': room.cada,
+            'facilitati_de_calcat': room.facilitati_de_calcat,
+            'izolare_fonica': room.izolare_fonica,
+            'terasa_la_soare': room.terasa_la_soare,
+            'pardoseala_de_gresie_marmura': room.pardoseala_de_gresie_marmura,
+            'papuci_de_casa': room.papuci_de_casa,
+            'uscator_de_rufe': room.uscator_de_rufe,
+            'animale_de_companie': room.animale_de_companie,
+            'incalzire': room.incalzire,
+            'birou': room.birou,
+            'mobilier_exterior': room.mobilier_exterior,
+            'alarma_de_fum': room.alarma_de_fum,
+            'vedere_la_gradina': room.vedere_la_gradina,
+            'cuptor': room.cuptor,
+            'cuptor_cu_microunde': room.cuptor_cu_microunde,
+            'zona_de_relaxare': room.zona_de_relaxare,
+            'canapea': room.canapea,
+            'intrare_privata': room.intrare_privata,
+            'fier_de_calcat': room.fier_de_calcat,
+            'masina_de_cafea': room.masina_de_cafea,
+            'plita_de_gatit': room.plita_de_gatit,
+            'extinctoare': room.extinctoare,
+            'cana_fierbator': room.cana_fierbator,
+            'gradina': room.gradina,
+            'ustensile_de_bucatarie': room.ustensile_de_bucatarie,
+            'masina_de_spalat': room.masina_de_spalat,
+            'balcon': room.balcon,
+            'pardoseala_de_lemn_sau_parchet': room.pardoseala_de_lemn_sau_parchet,
+            'aparat_pentru_prepararea_de_ceai_cafea': room.aparat_pentru_prepararea_de_ceai_cafea,
+            'zona_de_luat_masa': room.zona_de_luat_masa,
+            'canale_prin_cablu': room.canale_prin_cablu,
+            'aer_conditionat': room.aer_conditionat,
+            'masa': room.masa,
+            'suport_de_haine': room.suport_de_haine,
+            'cada_sau_dus': room.cada_sau_dus,
+            'frigider': room.frigider,
+            'mic_dejun': room.mic_dejun
         }
 
-        for facility in room.facilities:
-            input_data[facility.facility.name.lower().replace(' ', '_')] = True
-
-        for column in selected_columns:
-            if column not in input_data:
-                input_data[column] = False
-
-        input_features = np.array([input_data[col] for col in selected_columns]).reshape(1, -1)
+        # Populăm input_features cu valorile corespunzătoare din input_data
+        input_features = np.array([input_data.get(col, False) for col in selected_columns]).reshape(1, -1)
         input_features = imputer.transform(input_features)
         input_features = scaler.transform(input_features)
         predicted_price = model_rf_optimized.predict(input_features)[0]
@@ -195,12 +230,23 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
             df_filtered = df_filtered[df_filtered['region'] == preferred_region]
 
         # Identificăm facilitățile care sunt disponibile la cazări preferate
+        facility_columns = [
+            'vedere_la_oras', 'menaj_zilnic', 'canale_prin_satelit', 'zona_de_luat_masa_in_aer_liber', 'cada',
+            'facilitati_de_calcat', 'izolare_fonica', 'terasa_la_soare', 'pardoseala_de_gresie/marmura', 'papuci_de_casa',
+            'uscator_de_rufe', 'animale_de_companie', 'incalzire', 'birou', 'mobilier_exterior', 'alarma_de_fum',
+            'vedere_la_gradina', 'cuptor', 'cuptor_cu_microunde', 'zona_de_relaxare', 'canapea', 'intrare_privata',
+            'fier_de_calcat', 'masina_de_cafea', 'plita_de_gatit', 'extinctoare', 'cana_fierbator', 'gradina',
+            'ustensile_de_bucatarie', 'masina_de_spalat', 'balcon', 'pardoseala_de_lemn_sau_parchet',
+            'aparat_pentru_prepararea_de_ceai/cafea', 'zona_de_luat_masa', 'canale_prin_cablu', 'aer_conditionat',
+            'masa', 'suport_de_haine', 'cada_sau_dus', 'frigider', 'mic_dejun'
+        ]
+
         if preferred_accommodations:
-            preferred_facilities = df[df['name'].isin(preferred_accommodation_names)].iloc[:, -7:].sum(axis=0)
+            preferred_facilities = df[df['name'].isin(preferred_accommodation_names)][facility_columns].sum(axis=0)
 
             # Calculăm scorul de potrivire a facilităților pentru fiecare hotel
             for index, row in df_filtered.iterrows():
-                matching_facilities_score = sum(row[-7:] * preferred_facilities)
+                matching_facilities_score = sum(row[facility_columns] * preferred_facilities)
                 df_filtered.loc[index, 'preference_score'] += matching_facilities_score
 
         # Obținem lista de camere rezervate în perioada specificată
@@ -224,4 +270,5 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
 
     except Exception as e:
         return {'error': str(e)}
+
 
