@@ -48,7 +48,7 @@ class User(db.Model):
             'name': self.name,
             'email': self.email,
             'role': self.role,
-            'created_at': self.created_at.isoformat()
+            'created_at': self.created_at.strftime('%d-%m-%Y')
         }
 
 
@@ -221,9 +221,9 @@ class Reservation(db.Model):
             'user_id': self.user_id,
             'property_id': self.property_id,
             'room_id': self.room_id,
-            'check_in_date': self.check_in_date.isoformat(),
-            'check_out_date': self.check_out_date.isoformat(),
-            'status': self.status
+            'check_in_date': self.check_in_date.strftime('%d-%m-%Y'),
+            'check_out_date': self.check_out_date.strftime('%d-%m-%Y'),
+            'status': self.cancellation_date.strftime('%d-%m-%Y') if self.cancellation_date else None
         }
 
 
@@ -254,7 +254,7 @@ class Review(db.Model):
             'rating_value_for_money': self.rating_value_for_money,
             'rating_location': self.rating_location,
             'rating_wifi': self.rating_wifi,
-            'review_date': self.review_date.isoformat()
+            'review_date': self.created_at.strftime('%d-%m-%Y')
         }
 
 

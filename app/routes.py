@@ -10,6 +10,7 @@ from .ai import recommend_properties, predict_price_for_room
 from .models import User, Property, Room, Reservation, Review, Favorite, db, UserPreferences
 from .payments import create_payment_intent, confirm_payment, refund_payment
 
+
 stripe.api_key = app.config['STRIPE_API_KEY']
 
 routes_bp = Blueprint('routes', __name__)
@@ -20,6 +21,13 @@ UPLOAD_FOLDER = 'uploads/'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+
+def parse_date(date_str):
+    try:
+        return datetime.strptime(date_str, '%d-%m-%Y')
+    except ValueError:
+        raise ValueError('Invalid date format. Use dd-mm-yyyy.')
 
 
 # Decorators for access control
@@ -50,7 +58,6 @@ def check_property_owner_or_superadmin(f):
         return f(*args, **kwargs)
 
     return decorated_function
-
 
 
 def check_property_owner(f):
@@ -240,7 +247,7 @@ def update_user_preferences():
 @role_required('owner')
 def create_property():
     user_id = get_jwt_identity()
-    data = request.form.to_dict()
+    data = request.get_json()
 
     images = request.files.getlist('images')  # Obține lista de fișiere
 
@@ -281,28 +288,34 @@ def filter_properties():
     user_id = get_jwt_identity()
     user_preferences = UserPreferences.query.filter_by(user_id=user_id).first()
 
-    user_ratings = {}
-    if user_preferences:
-        user_ratings = {
-            'nota_personal': user_preferences.rating_personal,
-            'nota_facilităţi': user_preferences.rating_facilities,
-            'nota_curăţenie': user_preferences.rating_cleanliness,
-            'nota_confort': user_preferences.rating_comfort,
-            'nota_raport_calitate/preţ': user_preferences.rating_value_for_money,
-            'nota_locaţie': user_preferences.rating_location,
-            'nota_wifi_gratuit': user_preferences.rating_wifi
-        }
+    # Verifică dacă există preferințe completate
+    preferences_completed = user_preferences and all(
+        value is not None for value in [
+            user_preferences.rating_personal,
+            user_preferences.rating_facilities,
+            user_preferences.rating_cleanliness,
+            user_preferences.rating_comfort,
+            user_preferences.rating_value_for_money,
+            user_preferences.rating_location,
+            user_preferences.rating_wifi
+        ]
+    )
 
     check_in = request.args.get('check_in')
     check_out = request.args.get('check_out')
+    num_persons = request.args.get('num_persons', type=int)
+    sort_by = request.args.get('sort_by', 'default')
+
+    if not check_in or not check_out or not num_persons:
+        return jsonify({'message': 'Missing required fields: check_in, check_out, num_persons'}), 400
+
     region = request.args.get('region', None)
     price_max = request.args.get('price_max', type=float)
-    num_persons = request.args.get('num_persons', type=int)
     facilities = request.args.getlist('facilities')
 
     try:
-        check_in_date = datetime.strptime(check_in, '%d-%m-%Y')
-        check_out_date = datetime.strptime(check_out, '%d-%m-%Y')
+        check_in_date = parse_date(check_in)
+        check_out_date = parse_date(check_out)
     except ValueError:
         return jsonify({'message': 'Invalid date format. Use dd-mm-yyyy.'}), 400
 
@@ -317,37 +330,81 @@ def filter_properties():
         ~Room.id.in_(reserved_rooms)
     )
 
+    properties_query = properties_query.filter(Room.persons >= num_persons)
+
     if region:
         properties_query = properties_query.filter(Property.region == region)
 
     if price_max:
         properties_query = properties_query.filter(Room.price <= price_max)
 
-    if num_persons:
-        properties_query = properties_query.filter(Room.persons >= num_persons)
-
     if facilities:
         for facility in facilities:
             properties_query = properties_query.filter(getattr(Room, facility) == True)
 
     available_properties = properties_query.all()
-    recommendations = recommend_properties(
-        user_id=user_id,
-        user_ratings=user_ratings,
-        max_budget=price_max,
-        preferred_region=region,
-        check_in_date=check_in_date,
-        check_out_date=check_out_date
-    ) if user_preferences else []
 
-    recommendations = recommendations[:5]
+    # Sortarea proprietăților disponibile
+    def sort_key(property_item):
+        if sort_by == 'price_asc':
+            return property_item.rooms[0].price  # Sortare după preț crescător
+        elif sort_by == 'price_desc':
+            return -property_item.rooms[0].price  # Sortare după preț descrescător
+        elif sort_by == 'rating_avg':
+            avg_rating = (
+                property_item.nota_personal +
+                property_item.nota_facilităţi +
+                property_item.nota_curăţenie +
+                property_item.nota_confort +
+                property_item.nota_raport_calitate_preţ +
+                property_item.nota_locaţie +
+                property_item.nota_wifi_gratuit
+            ) / 7
+            return -avg_rating if avg_rating is not None else float('inf')  # Sortare după media ratingurilor, descrescător
+        else:
+            return property_item.id  # Ordinea implicită
 
-    sorted_properties = sorted(available_properties, key=lambda x: x.id not in [rec['id'] for rec in recommendations])
+    sorted_properties = sorted(available_properties, key=sort_key)
 
-    return jsonify({
-        'available_properties': [property_item.to_dict() for property_item in sorted_properties],
-        'recommendations': recommendations
-    }), 200
+    if preferences_completed:
+        user_ratings = {
+            'nota_personal': user_preferences.rating_personal,
+            'nota_facilităţi': user_preferences.rating_facilities,
+            'nota_curăţenie': user_preferences.rating_cleanliness,
+            'nota_confort': user_preferences.rating_comfort,
+            'nota_raport_calitate/preţ': user_preferences.rating_value_for_money,
+            'nota_locaţie': user_preferences.rating_location,
+            'nota_wifi_gratuit': user_preferences.rating_wifi
+        }
+
+        recommendations = recommend_properties(
+            user_id=user_id,
+            user_ratings=user_ratings,
+            max_budget=price_max,
+            preferred_region=region,
+            check_in_date=check_in_date,
+            check_out_date=check_out_date
+        )[:5]
+
+        recommendation_ids = {rec['id'] for rec in recommendations}
+
+        # Sortare cu recomandări prioritizate
+        def sort_key_with_recommendations(property_item):
+            if property_item.id in recommendation_ids:
+                return 0, 0  # Recomandările sunt sortate primele, fără criterii suplimentare
+            return sort_key(property_item)
+
+        sorted_properties = sorted(available_properties, key=sort_key_with_recommendations)
+
+        return jsonify({
+            'available_properties': [property_item.to_dict() for property_item in sorted_properties],
+            'recommendations': recommendations
+        }), 200
+    else:
+        return jsonify({
+            'available_properties': [property_item.to_dict() for property_item in sorted_properties],
+            'recommendations': []
+        }), 200
 
 
 @routes_bp.route('/properties/<int:property_id>', methods=['PUT'])
@@ -594,8 +651,11 @@ def delete_room(room_id):
 @jwt_required()
 def create_reservation():
     data = request.get_json()
-    check_in_date = datetime.strptime(data['check_in_date'], '%d-%m-%Y')
-    check_out_date = datetime.strptime(data['check_out_date'], '%d-%m-%Y')
+    try:
+        check_in_date = parse_date(data['check_in_date'])
+        check_out_date = parse_date(data['check_out_date'])
+    except ValueError as e:
+        return jsonify({'message': str(e)}), 400
 
     # Verifica disponibilitatea camerei pentru perioada specificată
     existing_reservations = Reservation.query.filter(
@@ -636,6 +696,12 @@ def confirm_reservation():
     if not payment_id or not room_id or not check_in_date or not check_out_date:
         return jsonify({'error': 'Missing required fields'}), 400
 
+    try:
+        check_in_date = parse_date(check_in_date)
+        check_out_date = parse_date(check_out_date)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
     # Confirmarea plății
     payment_result = confirm_payment(payment_id)
     if 'error' in payment_result:
@@ -646,8 +712,8 @@ def confirm_reservation():
         new_reservation = Reservation(
             user_id=get_jwt_identity(),
             room_id=room_id,
-            check_in_date=datetime.strptime(check_in_date, '%d-%m-%Y'),
-            check_out_date=datetime.strptime(check_out_date, '%d-%m-%Y'),
+            check_in_date=check_in_date,
+            check_out_date=check_out_date,
             status='confirmed'
         )
         db.session.add(new_reservation)
