@@ -10,7 +10,6 @@ from .ai import recommend_properties, predict_price_for_room
 from .models import User, Property, Room, Reservation, Review, Favorite, db, UserPreferences
 from .payments import create_payment_intent, confirm_payment, refund_payment
 
-
 stripe.api_key = app.config['STRIPE_API_KEY']
 
 routes_bp = Blueprint('routes', __name__)
@@ -21,13 +20,6 @@ UPLOAD_FOLDER = 'uploads/'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-
-def parse_date(date_str):
-    try:
-        return datetime.strptime(date_str, '%d-%m-%Y')
-    except ValueError:
-        raise ValueError('Invalid date format. Use dd-mm-yyyy.')
 
 
 # Decorators for access control
@@ -247,7 +239,7 @@ def update_user_preferences():
 @role_required('owner')
 def create_property():
     user_id = get_jwt_identity()
-    data = request.get_json()
+    data = request.form.to_dict()
 
     images = request.files.getlist('images')  # Obține lista de fișiere
 
@@ -305,17 +297,17 @@ def filter_properties():
     check_out = request.args.get('check_out')
     num_persons = request.args.get('num_persons', type=int)
     sort_by = request.args.get('sort_by', 'default')
+    price_max = request.args.get('price_max', type=float)
 
     if not check_in or not check_out or not num_persons:
         return jsonify({'message': 'Missing required fields: check_in, check_out, num_persons'}), 400
 
     region = request.args.get('region', None)
-    price_max = request.args.get('price_max', type=float)
     facilities = request.args.getlist('facilities')
 
     try:
-        check_in_date = parse_date(check_in)
-        check_out_date = parse_date(check_out)
+        check_in_date = datetime.strptime(check_in, '%d-%m-%Y')
+        check_out_date = datetime.strptime(check_out, '%d-%m-%Y')
     except ValueError:
         return jsonify({'message': 'Invalid date format. Use dd-mm-yyyy.'}), 400
 
@@ -330,13 +322,8 @@ def filter_properties():
         ~Room.id.in_(reserved_rooms)
     )
 
-    properties_query = properties_query.filter(Room.persons >= num_persons)
-
     if region:
         properties_query = properties_query.filter(Property.region == region)
-
-    if price_max:
-        properties_query = properties_query.filter(Room.price <= price_max)
 
     if facilities:
         for facility in facilities:
@@ -344,27 +331,59 @@ def filter_properties():
 
     available_properties = properties_query.all()
 
-    # Sortarea proprietăților disponibile
+    def find_rooms_to_accommodate(property_item, num_persons):
+        rooms = property_item.rooms
+        selected_rooms = []
+        total_persons = 0
+        total_price = 0.0
+
+        for room in sorted(rooms, key=lambda r: r.persons, reverse=True):
+            selected_rooms.append(room)
+            total_persons += room.persons
+            total_price += room.price
+
+            if total_persons >= num_persons:
+                return selected_rooms, total_price
+
+        return selected_rooms if total_persons >= num_persons else None, total_price
+
+    result_properties = []
+    for property_item in available_properties:
+        rooms, total_price = find_rooms_to_accommodate(property_item, num_persons)
+        if rooms and (price_max is None or total_price <= price_max):
+            total_persons = sum(room.persons for room in rooms)
+            result_properties.append({
+                **property_item.to_dict(),
+                'rooms': [{
+                    'room_type': room.room_type,
+                    'persons': room.persons,
+                    'price': room.price,
+                    'currency': room.currency
+                } for room in rooms],
+                'total_price': total_price,
+                'total_persons': total_persons
+            })
+
     def sort_key(property_item):
         if sort_by == 'price_asc':
-            return property_item.rooms[0].price  # Sortare după preț crescător
+            return property_item['total_price']  # Sortare după preț total crescător
         elif sort_by == 'price_desc':
-            return -property_item.rooms[0].price  # Sortare după preț descrescător
+            return -property_item['total_price']  # Sortare după preț total descrescător
         elif sort_by == 'rating_avg':
             avg_rating = (
-                property_item.nota_personal +
-                property_item.nota_facilităţi +
-                property_item.nota_curăţenie +
-                property_item.nota_confort +
-                property_item.nota_raport_calitate_preţ +
-                property_item.nota_locaţie +
-                property_item.nota_wifi_gratuit
+                property_item.get('nota_personal', 0) +
+                property_item.get('nota_facilităţi', 0) +
+                property_item.get('nota_curăţenie', 0) +
+                property_item.get('nota_confort', 0) +
+                property_item.get('nota_raport_calitate_preţ', 0) +
+                property_item.get('nota_locaţie', 0) +
+                property_item.get('nota_wifi_gratuit', 0)
             ) / 7
             return -avg_rating if avg_rating is not None else float('inf')  # Sortare după media ratingurilor, descrescător
         else:
-            return property_item.id  # Ordinea implicită
+            return property_item['id']  # Ordinea implicită
 
-    sorted_properties = sorted(available_properties, key=sort_key)
+    sorted_properties = sorted(result_properties, key=sort_key)
 
     if preferences_completed:
         user_ratings = {
@@ -390,19 +409,19 @@ def filter_properties():
 
         # Sortare cu recomandări prioritizate
         def sort_key_with_recommendations(property_item):
-            if property_item.id in recommendation_ids:
-                return 0, 0  # Recomandările sunt sortate primele, fără criterii suplimentare
-            return sort_key(property_item)
+            if property_item['id'] in recommendation_ids:
+                return 0, sort_key(property_item)  # Recomandările sunt sortate primele, cu criteriul de sortare suplimentar
+            return 1, sort_key(property_item)
 
-        sorted_properties = sorted(available_properties, key=sort_key_with_recommendations)
+        sorted_properties = sorted(result_properties, key=sort_key_with_recommendations)
 
         return jsonify({
-            'available_properties': [property_item.to_dict() for property_item in sorted_properties],
+            'available_properties': sorted_properties,
             'recommendations': recommendations
         }), 200
     else:
         return jsonify({
-            'available_properties': [property_item.to_dict() for property_item in sorted_properties],
+            'available_properties': sorted_properties,
             'recommendations': []
         }), 200
 
@@ -579,58 +598,71 @@ def get_room(room_id):
 
 @routes_bp.route('/rooms/<int:room_id>', methods=['PUT'])
 @jwt_required()
-@check_property_owner
 def update_room(room_id):
     user_id = get_jwt_identity()
     data = request.get_json()
 
-    print(f"Received request to update room with ID: {room_id} by user: {user_id}")
-
     room = Room.query.get(room_id)
     if not room:
-        print(f"Room with ID: {room_id} not found.")
         return jsonify({'message': 'Room not found'}), 404
 
     property_item = Property.query.get(room.property_id)
     if not property_item:
-        print(f"Property with ID: {room.property_id} not found.")
-        return jsonify({'message': 'Property not found'}), 404
+        return jsonify({'message': 'Property associated with the room not found'}), 404
 
     if property_item.owner_id != user_id:
-        print(f"User {user_id} unauthorized to update room with ID: {room_id}")
         return jsonify({'message': 'Unauthorized'}), 403
 
-    # Actualizează detaliile camerei
+    # Update only the provided fields
     room.room_type = data.get('room_type', room.room_type)
     room.persons = data.get('persons', room.persons)
     room.price = data.get('price', room.price)
     room.currency = data.get('currency', room.currency)
+    room.price_rating = data.get('price_rating', room.price_rating)
 
-    # Actualizează facilitățile camerei, dacă sunt furnizate în request
-    facility_fields = [
-        'vedere_la_oras', 'menaj_zilnic', 'canale_prin_satelit', 'zona_de_luat_masa_in_aer_liber',
-        'cada', 'facilitati_de_calcat', 'izolare_fonica', 'terasa_la_soare', 'pardoseala_de_gresie_marmura',
-        'papuci_de_casa', 'uscator_de_rufe', 'animale_de_companie', 'incalzire', 'birou', 'mobilier_exterior',
-        'alarma_de_fum', 'vedere_la_gradina', 'cuptor', 'cuptor_cu_microunde', 'zona_de_relaxare', 'canapea',
-        'intrare_privata', 'fier_de_calcat', 'masina_de_cafea', 'plita_de_gatit', 'extinctoare', 'cana_fierbator',
-        'gradina', 'ustensile_de_bucatarie', 'masina_de_spalat', 'balcon', 'pardoseala_de_lemn_sau_parchet',
-        'aparat_pentru_prepararea_de_ceai_cafea', 'zona_de_luat_masa', 'canale_prin_cablu', 'aer_conditionat',
-        'masa', 'suport_de_haine', 'cada_sau_dus', 'frigider', 'mic_dejun'
-    ]
-
-    for field in facility_fields:
-        if field in data:
-            setattr(room, field, data[field])
+    room.vedere_la_oras = data.get('vedere_la_oras', room.vedere_la_oras)
+    room.menaj_zilnic = data.get('menaj_zilnic', room.menaj_zilnic)
+    room.canale_prin_satelit = data.get('canale_prin_satelit', room.canale_prin_satelit)
+    room.zona_de_luat_masa_in_aer_liber = data.get('zona_de_luat_masa_in_aer_liber', room.zona_de_luat_masa_in_aer_liber)
+    room.cada = data.get('cada', room.cada)
+    room.facilitati_de_calcat = data.get('facilitati_de_calcat', room.facilitati_de_calcat)
+    room.izolare_fonica = data.get('izolare_fonica', room.izolare_fonica)
+    room.terasa_la_soare = data.get('terasa_la_soare', room.terasa_la_soare)
+    room.pardoseala_de_gresie_marmura = data.get('pardoseala_de_gresie_marmura', room.pardoseala_de_gresie_marmura)
+    room.papuci_de_casa = data.get('papuci_de_casa', room.papuci_de_casa)
+    room.uscator_de_rufe = data.get('uscator_de_rufe', room.uscator_de_rufe)
+    room.animale_de_companie = data.get('animale_de_companie', room.animale_de_companie)
+    room.incalzire = data.get('incalzire', room.incalzire)
+    room.birou = data.get('birou', room.birou)
+    room.mobilier_exterior = data.get('mobilier_exterior', room.mobilier_exterior)
+    room.alarma_de_fum = data.get('alarma_de_fum', room.alarma_de_fum)
+    room.vedere_la_gradina = data.get('vedere_la_gradina', room.vedere_la_gradina)
+    room.cuptor = data.get('cuptor', room.cuptor)
+    room.cuptor_cu_microunde = data.get('cuptor_cu_microunde', room.cuptor_cu_microunde)
+    room.zona_de_relaxare = data.get('zona_de_relaxare', room.zona_de_relaxare)
+    room.canapea = data.get('canapea', room.canapea)
+    room.intrare_privata = data.get('intrare_privata', room.intrare_privata)
+    room.fier_de_calcat = data.get('fier_de_calcat', room.fier_de_calcat)
+    room.masina_de_cafea = data.get('masina_de_cafea', room.masina_de_cafea)
+    room.plita_de_gatit = data.get('plita_de_gatit', room.plita_de_gatit)
+    room.extinctoare = data.get('extinctoare', room.extinctoare)
+    room.cana_fierbator = data.get('cana_fierbator', room.cana_fierbator)
+    room.gradina = data.get('gradina', room.gradina)
+    room.ustensile_de_bucatarie = data.get('ustensile_de_bucatarie', room.ustensile_de_bucatarie)
+    room.masina_de_spalat = data.get('masina_de_spalat', room.masina_de_spalat)
+    room.balcon = data.get('balcon', room.balcon)
+    room.pardoseala_de_lemn_sau_parchet = data.get('pardoseala_de_lemn_sau_parchet', room.pardoseala_de_lemn_sau_parchet)
+    room.aparat_pentru_prepararea_de_ceai_cafea = data.get('aparat_pentru_prepararea_de_ceai_cafea', room.aparat_pentru_prepararea_de_ceai_cafea)
+    room.zona_de_luat_masa = data.get('zona_de_luat_masa', room.zona_de_luat_masa)
+    room.canale_prin_cablu = data.get('canale_prin_cablu', room.canale_prin_cablu)
+    room.aer_conditionat = data.get('aer_conditionat', room.aer_conditionat)
+    room.masa = data.get('masa', room.masa)
+    room.suport_de_haine = data.get('suport_de_haine', room.suport_de_haine)
+    room.cada_sau_dus = data.get('cada_sau_dus', room.cada_sau_dus)
+    room.frigider = data.get('frigider', room.frigider)
+    room.mic_dejun = data.get('mic_dejun', room.mic_dejun)
 
     db.session.commit()
-
-    # Apelarea funcției de predicție a prețului și actualizarea ratingului
-    price_prediction = predict_price_for_room(room_id)
-    if 'error' in price_prediction:
-        print(f"Error predicting price for room ID: {room_id} - {price_prediction['error']}")
-        return jsonify({'error': price_prediction['error']}), 500
-
-    db.session.commit()  # Confirmăm actualizarea camerei doar după obținerea ratingului
 
     return jsonify(room.to_dict()), 200
 
@@ -651,11 +683,8 @@ def delete_room(room_id):
 @jwt_required()
 def create_reservation():
     data = request.get_json()
-    try:
-        check_in_date = parse_date(data['check_in_date'])
-        check_out_date = parse_date(data['check_out_date'])
-    except ValueError as e:
-        return jsonify({'message': str(e)}), 400
+    check_in_date = datetime.strptime(data['check_in_date'], '%d-%m-%Y')
+    check_out_date = datetime.strptime(data['check_out_date'], '%d-%m-%Y')
 
     # Verifica disponibilitatea camerei pentru perioada specificată
     existing_reservations = Reservation.query.filter(
@@ -696,12 +725,6 @@ def confirm_reservation():
     if not payment_id or not room_id or not check_in_date or not check_out_date:
         return jsonify({'error': 'Missing required fields'}), 400
 
-    try:
-        check_in_date = parse_date(check_in_date)
-        check_out_date = parse_date(check_out_date)
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-
     # Confirmarea plății
     payment_result = confirm_payment(payment_id)
     if 'error' in payment_result:
@@ -712,8 +735,8 @@ def confirm_reservation():
         new_reservation = Reservation(
             user_id=get_jwt_identity(),
             room_id=room_id,
-            check_in_date=check_in_date,
-            check_out_date=check_out_date,
+            check_in_date=datetime.strptime(check_in_date, '%d-%m-%Y'),
+            check_out_date=datetime.strptime(check_out_date, '%d-%m-%Y'),
             status='confirmed'
         )
         db.session.add(new_reservation)
