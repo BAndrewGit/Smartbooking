@@ -1,4 +1,4 @@
-from sqlalchemy import JSON
+from sqlalchemy import JSON, func
 from . import db
 from datetime import datetime, timezone
 from enum import Enum
@@ -77,6 +77,10 @@ class Property(db.Model):
     reviews = db.relationship('Review', backref='property', cascade='all, delete-orphan')
     favorites = db.relationship('Favorite', backref='property', cascade='all, delete-orphan')
 
+    def average_rating(self, attribute):
+        avg = db.session.query(func.avg(getattr(Review, attribute))).filter(Review.property_id == self.id).scalar()
+        return avg if avg is not None else 0
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -96,7 +100,14 @@ class Property(db.Model):
             'type': self.type.value,
             'description': self.description,
             'images': self.images,
-            'cluster': self.cluster
+            'cluster': self.cluster,
+            'nota_personal': self.average_rating('rating_personal'),
+            'nota_facilităţi': self.average_rating('rating_facilities'),
+            'nota_curăţenie': self.average_rating('rating_cleanliness'),
+            'nota_confort': self.average_rating('rating_comfort'),
+            'nota_raport_calitate/preţ': self.average_rating('rating_value_for_money'),
+            'nota_locaţie': self.average_rating('rating_location'),
+            'nota_wifi_gratuit': self.average_rating('rating_wifi')
         }
 
 

@@ -1,104 +1,61 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.cluster import KMeans
 from .models import Favorite, Property, Room, Review, db, Reservation
 
-# Încărcarea datelor inițiale
-df = pd.read_csv('clean_dataset_Romania.csv')
 
-# Codificarea one-hot
-df = pd.get_dummies(df, columns=['type', 'region', 'room_type'])
+# Încărcarea și pregătirea datasetului
+def load_and_prepare_data():
+    df = pd.read_csv('clean_dataset_Romania.csv')
 
-# Creează o listă cu numele coloanelor codificate cu one-hot
-one_hot_columns = [col for col in df.columns if 'type_' in col or 'region_' in col or 'room_type_' in col]
+    # Codificarea one-hot
+    df = pd.get_dummies(df, columns=['type', 'region', 'room_type'])
 
-# Adaugă coloanele predefinite la listă
-selected_columns = one_hot_columns + [
-    'persons', 'stars', 'nota_personal', 'nota_facilităţi', 'nota_curăţenie',
-    'nota_confort', 'nota_raport_calitate/preţ', 'nota_locaţie', 'nota_wifi_gratuit', 'num_reviews',
-    'vedere_la_oras', 'menaj_zilnic', 'canale_prin_satelit', 'zona_de_luat_masa_in_aer_liber', 'cada',
-    'facilitati_de_calcat', 'izolare_fonica', 'terasa_la_soare', 'pardoseala_de_gresie/marmura', 'papuci_de_casa',
-    'uscator_de_rufe', 'animale_de_companie', 'incalzire', 'birou', 'mobilier_exterior', 'alarma_de_fum',
-    'vedere_la_gradina', 'cuptor', 'cuptor_cu_microunde', 'zona_de_relaxare', 'canapea', 'intrare_privata',
-    'fier_de_calcat', 'masina_de_cafea', 'plita_de_gatit', 'extinctoare', 'cana_fierbator', 'gradina',
-    'ustensile_de_bucatarie', 'masina_de_spalat', 'balcon', 'pardoseala_de_lemn_sau_parchet',
-    'aparat_pentru_prepararea_de_ceai/cafea', 'zona_de_luat_masa', 'canale_prin_cablu', 'aer_conditionat', 'masa',
-    'suport_de_haine', 'cada_sau_dus', 'frigider', 'mic_dejun'
-]
+    # Creează o listă cu numele coloanelor codificate cu one-hot
+    one_hot_columns = [col for col in df.columns if 'type_' in col or 'region_' in col or 'room_type_' in col]
 
-# Selectează doar coloanele dorite din DataFrame
-features_df = df[selected_columns]
-target = df['price']
+    # Adaugă coloanele predefinite la listă
+    selected_columns = one_hot_columns + [
+        'persons', 'stars', 'nota_personal', 'nota_facilităţi', 'nota_curăţenie',
+        'nota_confort', 'nota_raport_calitate/preţ', 'nota_locaţie', 'nota_wifi_gratuit', 'num_reviews',
+        'vedere_la_oras', 'menaj_zilnic', 'canale_prin_satelit', 'zona_de_luat_masa_in_aer_liber', 'cada',
+        'facilitati_de_calcat', 'izolare_fonica', 'terasa_la_soare', 'pardoseala_de_gresie/marmura', 'papuci_de_casa',
+        'uscator_de_rufe', 'animale_de_companie', 'incalzire', 'birou', 'mobilier_exterior', 'alarma_de_fum',
+        'vedere_la_gradina', 'cuptor', 'cuptor_cu_microunde', 'zona_de_relaxare', 'canapea', 'intrare_privata',
+        'fier_de_calcat', 'masina_de_cafea', 'plita_de_gatit', 'extinctoare', 'cana_fierbator', 'gradina',
+        'ustensile_de_bucatarie', 'masina_de_spalat', 'balcon', 'pardoseala_de_lemn_sau_parchet',
+        'aparat_pentru_prepararea_de_ceai/cafea', 'zona_de_luat_masa', 'canale_prin_cablu', 'aer_conditionat', 'masa',
+        'suport_de_haine', 'cada_sau_dus', 'frigider', 'mic_dejun'
+    ]
 
-# Împărțirea datelor în seturi de învățare și testare
-df_train, df_test = train_test_split(df, test_size=0.2, random_state=42)
-
-# Selectarea caracteristicilor și a țintei pentru fiecare set de date
-features_train = df_train[features_df.columns]
-target_train = df_train['price']
-
-features_test = df_test[features_df.columns]
-target_test = df_test['price']
-
-# Crearea imputerului pentru a înlocui valorile lipsă
-imputer = SimpleImputer(strategy='mean')
-
-features_train = imputer.fit_transform(features_train)
-features_test = imputer.transform(features_test)
-
-# Eliminare Outlieri
-Q1 = df['price'].quantile(0.25)
-Q3 = df['price'].quantile(0.75)
-IQR = Q3 - Q1
-
-df_optimized = df[(df['price'] >= Q1 - 1.5 * IQR) & (df['price'] <= Q3 + 1.5 * IQR)]
-
-# Antrenare model pe datele curățate
-features_optimized = df_optimized[selected_columns]
-target_optimized = df_optimized['price']
-
-# Împărțirea datelor în seturi de antrenament și testare
-features_train_optimized, features_test_optimized, target_train_optimized, target_test_optimized = train_test_split(
-    features_optimized, target_optimized, test_size=0.2, random_state=0
-)
-
-# Normalizare și scalare
-scaler = StandardScaler()
-features_train_scaled = scaler.fit_transform(features_train_optimized)
-features_test_scaled = scaler.transform(features_test_optimized)
-
-# Crearea modelului RandomForestRegressor
-model_rf_optimized = RandomForestRegressor(random_state=0)
-
-# Antrenarea modelului pe datele optimizate
-model_rf_optimized.fit(features_train_scaled, target_train_optimized.to_numpy())
-
-# Modelul de recomandare (KMeans)
-kmeans = KMeans(n_clusters=5, n_init='auto')
-kmeans.fit(df[['price', 'nota_personal', 'nota_facilităţi', 'nota_curăţenie', 'nota_confort',
-               'nota_raport_calitate/preţ', 'nota_locaţie', 'nota_wifi_gratuit']])
-df['cluster'] = kmeans.labels_
+    return df, selected_columns
 
 
-def calculate_price_rating(predicted_price, actual_price, mae_half):
-    if actual_price < predicted_price - 2 * mae_half:
-        return "Very good price"
-    elif predicted_price - 2 * mae_half <= actual_price < predicted_price - mae_half:
-        return "Good price"
-    elif predicted_price - mae_half <= actual_price <= predicted_price + mae_half:
-        return "Fair price"
-    elif predicted_price + mae_half < actual_price <= predicted_price + 2 * mae_half:
-        return "Increased price"
-    else:
-        return "High price"
+# Funcția de actualizare a clusterelor
+def update_property_clusters():
+    df, selected_columns = load_and_prepare_data()
+
+    # Modelul de recomandare (KMeans)
+    kmeans = KMeans(n_clusters=5, n_init='auto')
+    kmeans.fit(df[['price', 'nota_personal', 'nota_facilităţi', 'nota_curăţenie', 'nota_confort',
+                   'nota_raport_calitate/preţ', 'nota_locaţie', 'nota_wifi_gratuit']])
+    df['cluster'] = kmeans.labels_
+
+    # Actualizarea valorilor cluster în baza de date folosind indexul DataFrame-ului
+    properties = Property.query.all()
+    for idx, property_item in enumerate(properties):
+        property_item.cluster = df.at[idx, 'cluster']
+    db.session.commit()
 
 
+# Funcția de predicție a prețului pentru o cameră
 def predict_price_for_room(room_id):
     try:
+        df, selected_columns = load_and_prepare_data()
+
         room = Room.query.get_or_404(room_id)
         property_item = Property.query.get_or_404(room.property_id)
 
@@ -155,7 +112,18 @@ def predict_price_for_room(room_id):
             'mic_dejun': room.mic_dejun
         }
 
-        # Populăm input_features cu valorile corespunzătoare din input_data
+        # Pregătirea modelului
+        imputer = SimpleImputer(strategy='mean')
+        scaler = StandardScaler()
+
+        features = df[selected_columns]
+        target = df['price']
+        features = imputer.fit_transform(features)
+        features = scaler.fit_transform(features)
+
+        model_rf_optimized = RandomForestRegressor(random_state=0)
+        model_rf_optimized.fit(features, target.to_numpy())
+
         input_features = np.array([input_data.get(col, False) for col in selected_columns]).reshape(1, -1)
         input_features = imputer.transform(input_features)
         input_features = scaler.transform(input_features)
@@ -177,7 +145,22 @@ def predict_price_for_room(room_id):
         return {'error': str(e)}
 
 
-def recommend_properties(user_id, user_ratings, max_budget=None, preferred_region=None, check_in_date=None, check_out_date=None):
+def calculate_price_rating(predicted_price, actual_price, mae_half):
+    if actual_price < predicted_price - 2 * mae_half:
+        return "Very good price"
+    elif predicted_price - 2 * mae_half <= actual_price < predicted_price - mae_half:
+        return "Good price"
+    elif predicted_price - mae_half <= actual_price <= predicted_price + mae_half:
+        return "Fair price"
+    elif predicted_price + mae_half < actual_price <= predicted_price + 2 * mae_half:
+        return "Increased price"
+    else:
+        return "High price"
+
+
+# Funcția de recomandare a proprietăților
+def recommend_properties(user_id, user_ratings, max_budget=None, preferred_region=None, check_in_date=None,
+                         check_out_date=None):
     try:
         # Obținem lista de cazări favorite ale utilizatorului curent
         favorite_properties = Favorite.query.filter_by(user_id=user_id).all()
@@ -191,27 +174,22 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
         properties = Property.query.all()
         property_data = []
         for property in properties:
-            property_data.append({
-                'id': property.id,
-                'name': property.name,
-                'region': property.region,
-                'price': sum(room.price for room in property.rooms) / len(property.rooms) if property.rooms else 0,
-                'cluster': property.cluster,
-                'nota_personal': property.nota_personal,
-                'nota_facilităţi': property.nota_facilităţi,
-                'nota_curăţenie': property.nota_curăţenie,
-                'nota_confort': property.nota_confort,
-                'nota_raport_calitate/preţ': property.nota_raport_calitate_preţ,
-                'nota_locaţie': property.nota_locaţie,
-                'nota_wifi_gratuit': property.nota_wifi_gratuit
-            })
+            property_dict = property.to_dict()
+            for room in property.rooms:
+                room_dict = room.to_dict()
+                for col, value in room_dict.items():
+                    if col not in property_dict:
+                        property_dict[col] = value
+            property_data.append(property_dict)
+
         df = pd.DataFrame(property_data)
 
         # Calculăm scorul de preferință pentru fiecare hotel
         for index, row in df.iterrows():
             preference_score = 0
             for category, user_rating in user_ratings.items():
-                preference_score += row[category] * user_rating
+                if category in row:
+                    preference_score += row[category] * user_rating
             df.loc[index, 'preference_score'] = preference_score
 
         # Identificăm clusterul preferat
@@ -229,10 +207,11 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
         if preferred_region:
             df_filtered = df_filtered[df_filtered['region'] == preferred_region]
 
-        # Identificăm facilitățile care sunt disponibile la cazări preferate
+        # Definirea coloanelor de facilități
         facility_columns = [
             'vedere_la_oras', 'menaj_zilnic', 'canale_prin_satelit', 'zona_de_luat_masa_in_aer_liber', 'cada',
-            'facilitati_de_calcat', 'izolare_fonica', 'terasa_la_soare', 'pardoseala_de_gresie/marmura', 'papuci_de_casa',
+            'facilitati_de_calcat', 'izolare_fonica', 'terasa_la_soare', 'pardoseala_de_gresie_marmura',
+            'papuci_de_casa',
             'uscator_de_rufe', 'animale_de_companie', 'incalzire', 'birou', 'mobilier_exterior', 'alarma_de_fum',
             'vedere_la_gradina', 'cuptor', 'cuptor_cu_microunde', 'zona_de_relaxare', 'canapea', 'intrare_privata',
             'fier_de_calcat', 'masina_de_cafea', 'plita_de_gatit', 'extinctoare', 'cana_fierbator', 'gradina',
@@ -241,12 +220,16 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
             'masa', 'suport_de_haine', 'cada_sau_dus', 'frigider', 'mic_dejun'
         ]
 
+        # Verificăm dacă toate coloanele de facilități sunt disponibile în DataFrame
+        available_facility_columns = [col for col in facility_columns if col in df.columns]
+
         if preferred_accommodations:
-            preferred_facilities = df[df['name'].isin(preferred_accommodation_names)][facility_columns].sum(axis=0)
+            preferred_facilities = df[df['name'].isin(preferred_accommodation_names)][available_facility_columns].sum(
+                axis=0)
 
             # Calculăm scorul de potrivire a facilităților pentru fiecare hotel
             for index, row in df_filtered.iterrows():
-                matching_facilities_score = sum(row[facility_columns] * preferred_facilities)
+                matching_facilities_score = sum(row[available_facility_columns] * preferred_facilities)
                 df_filtered.loc[index, 'preference_score'] += matching_facilities_score
 
         # Obținem lista de camere rezervate în perioada specificată
@@ -264,11 +247,57 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
         df_filtered = df_filtered[df_filtered['id'].isin(available_properties_ids)]
 
         # Afișăm primele 5 hoteluri cu cel mai mare scor de preferință
-        recommendations = df_filtered.nlargest(5, 'preference_score')
+        recommendations_df = df_filtered.nlargest(5, 'preference_score')
 
-        return recommendations.to_dict(orient='records')
+        recommendations = []
+        for _, row in recommendations_df.iterrows():
+            recommendation = {
+                'address': row['address'],
+                'availability': row['availability'],
+                'check_in': row['check_in'],
+                'check_out': row['check_out'],
+                'cluster': row['cluster'],
+                'country': row['country'],
+                'description': row['description'],
+                'id': row['id'],
+                'images': row['images'],
+                'latitude': row['latitude'],
+                'longitude': row['longitude'],
+                'name': row['name'],
+                'nota_confort': row['nota_confort'],
+                'nota_curăţenie': row['nota_curăţenie'],
+                'nota_facilităţi': row['nota_facilităţi'],
+                'nota_locaţie': row['nota_locaţie'],
+                'nota_personal': row['nota_personal'],
+                'nota_raport_calitate/preţ': row['nota_raport_calitate/preţ'],
+                'nota_wifi_gratuit': row['nota_wifi_gratuit'],
+                'num_reviews': row['num_reviews'],
+                'owner_id': row['owner_id'],
+                'postal_code': row['postal_code'],
+                'region': row['region'],
+                'rooms': [
+                    {
+                        'currency': room.currency,
+                        'persons': room.persons,
+                        'price': room.price,
+                        'room_type': room.room_type
+                    } for room in Property.query.get(row['id']).rooms
+                ],
+                'stars': row['stars'],
+                'total_persons': row['persons'],
+                'total_price': row['price'],
+                'type': row['type'],
+                'preference_score': row['preference_score']
+            }
+
+            # Adăugăm facilitățile la recomandări
+            for col in available_facility_columns:
+                recommendation[col] = row[col]
+
+            recommendations.append(recommendation)
+
+        return recommendations
 
     except Exception as e:
-        return {'error': str(e)}
-
-
+        print(f"Error in recommend_properties: {str(e)}")
+        return []

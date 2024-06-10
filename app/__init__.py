@@ -24,7 +24,12 @@ def create_app():
     with app.app_context():
         # Importurile sunt plasate aici pentru a evita importurile circulare
         from . import routes, models, auth, ai, payments
+        from .ai import update_property_clusters  # Importă funcția de actualizare a clusterelor
+
         db.create_all()
+
+        # Actualizarea proprietăților cu clusterele calculate
+        update_property_clusters()
 
         # Înregistrare blueprint-uri
         app.register_blueprint(auth.auth_bp, url_prefix='/auth')

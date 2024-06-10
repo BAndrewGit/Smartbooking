@@ -320,7 +320,7 @@ def filter_properties():
 
     # Filtrare proprietăți care au camere disponibile
     properties_query = db.session.query(Property).join(Room).filter(
-        ~Room.id.in_(reserved_rooms)
+        ~Room.id.in_(reserved_rooms.select())
     )
 
     if region:
@@ -404,7 +404,10 @@ def filter_properties():
             preferred_region=region,
             check_in_date=check_in_date,
             check_out_date=check_out_date
-        )[:5]
+        )
+
+        if isinstance(recommendations, list):
+            recommendations = recommendations[:5]
 
         recommendation_ids = {rec['id'] for rec in recommendations}
 
