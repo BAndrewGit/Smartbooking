@@ -375,7 +375,7 @@ def filter_properties():
                 property_item.get('nota_facilităţi', 0) +
                 property_item.get('nota_curăţenie', 0) +
                 property_item.get('nota_confort', 0) +
-                property_item.get('nota_raport_calitate_preţ', 0) +
+                property_item.get('nota_raport_calitate/preţ', 0) +
                 property_item.get('nota_locaţie', 0) +
                 property_item.get('nota_wifi_gratuit', 0)
             ) / 7
@@ -410,8 +410,8 @@ def filter_properties():
         # Sortare cu recomandări prioritizate
         def sort_key_with_recommendations(property_item):
             if property_item['id'] in recommendation_ids:
-                return 0, sort_key(property_item)  # Recomandările sunt sortate primele, cu criteriul de sortare suplimentar
-            return 1, sort_key(property_item)
+                return (0, sort_key(property_item))  # Recomandările sunt sortate primele, cu criteriul de sortare suplimentar
+            return (1, sort_key(property_item))
 
         sorted_properties = sorted(result_properties, key=sort_key_with_recommendations)
 
