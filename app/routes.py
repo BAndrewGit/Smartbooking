@@ -5,6 +5,7 @@ from functools import wraps
 import stripe
 from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from sqlalchemy import func
 from werkzeug.utils import secure_filename
 from .ai import recommend_properties, predict_price_for_room
 from .models import User, Property, Room, Reservation, Review, Favorite, db, UserPreferences
@@ -801,8 +802,9 @@ def cancel_reservation(reservation_id):
 @jwt_required()
 def create_review():
     data = request.get_json()
+    user_id = get_jwt_identity()
     new_review = Review(
-        user_id=get_jwt_identity(),
+        user_id=user_id,
         property_id=data['property_id'],
         review_text=data['review_text'],
         rating_personal=data['rating_personal'],
@@ -815,6 +817,14 @@ def create_review():
     )
     db.session.add(new_review)
     db.session.commit()
+
+    # Actualizează numărul de recenzii
+    property_id = data['property_id']
+    num_reviews = db.session.query(func.count(Review.id)).filter(Review.property_id == property_id).scalar()
+    property_to_update = Property.query.get(property_id)
+    property_to_update.num_reviews = num_reviews
+    db.session.commit()
+
     return jsonify({'message': 'Review created successfully'}), 201
 
 
@@ -856,8 +866,16 @@ def delete_review(review_id):
     review = Review.query.get_or_404(review_id)
     if review.user_id != user_id:
         return jsonify({'message': 'Unauthorized'}), 403
+    property_id = review.property_id
     db.session.delete(review)
     db.session.commit()
+
+    # Actualizează numărul de recenzii
+    num_reviews = db.session.query(func.count(Review.id)).filter(Review.property_id == property_id).scalar()
+    property_to_update = Property.query.get(property_id)
+    property_to_update.num_reviews = num_reviews
+    db.session.commit()
+
     return jsonify({'message': 'Review deleted successfully'}), 200
 
 

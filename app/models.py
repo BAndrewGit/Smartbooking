@@ -64,7 +64,7 @@ class Property(db.Model):
     longitude = db.Column(db.Float)
     check_in = db.Column(db.String(20))
     check_out = db.Column(db.String(20))
-    num_reviews = db.Column(db.Integer)
+    num_reviews = db.Column(db.Integer, default=0)
     availability = db.Column(db.Boolean, default=True)
     stars = db.Column(db.Integer)
     type = db.Column(db.Enum(PropertyType), nullable=False)
