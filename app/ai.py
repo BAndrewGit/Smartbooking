@@ -159,8 +159,7 @@ def calculate_price_rating(predicted_price, actual_price, mae_half):
 
 
 # Funcția de recomandare a proprietăților
-def recommend_properties(user_id, user_ratings, max_budget=None, preferred_region=None, check_in_date=None,
-                         check_out_date=None):
+def recommend_properties(user_id, user_ratings, max_budget=None, preferred_region=None, check_in_date=None, check_out_date=None):
     try:
         # Obținem lista de cazări favorite ale utilizatorului curent
         favorite_properties = Favorite.query.filter_by(user_id=user_id).all()
@@ -175,11 +174,6 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
         property_data = []
         for property in properties:
             property_dict = property.to_dict()
-            for room in property.rooms:
-                room_dict = room.to_dict()
-                for col, value in room_dict.items():
-                    if col not in property_dict:
-                        property_dict[col] = value
             property_data.append(property_dict)
 
         df = pd.DataFrame(property_data)
@@ -210,8 +204,7 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
         # Definirea coloanelor de facilități
         facility_columns = [
             'vedere_la_oras', 'menaj_zilnic', 'canale_prin_satelit', 'zona_de_luat_masa_in_aer_liber', 'cada',
-            'facilitati_de_calcat', 'izolare_fonica', 'terasa_la_soare', 'pardoseala_de_gresie_marmura',
-            'papuci_de_casa',
+            'facilitati_de_calcat', 'izolare_fonica', 'terasa_la_soare', 'pardoseala_de_gresie_marmura', 'papuci_de_casa',
             'uscator_de_rufe', 'animale_de_companie', 'incalzire', 'birou', 'mobilier_exterior', 'alarma_de_fum',
             'vedere_la_gradina', 'cuptor', 'cuptor_cu_microunde', 'zona_de_relaxare', 'canapea', 'intrare_privata',
             'fier_de_calcat', 'masina_de_cafea', 'plita_de_gatit', 'extinctoare', 'cana_fierbator', 'gradina',
@@ -224,8 +217,7 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
         available_facility_columns = [col for col in facility_columns if col in df.columns]
 
         if preferred_accommodations:
-            preferred_facilities = df[df['name'].isin(preferred_accommodation_names)][available_facility_columns].sum(
-                axis=0)
+            preferred_facilities = df[df['name'].isin(preferred_accommodation_names)][available_facility_columns].sum(axis=0)
 
             # Calculăm scorul de potrivire a facilităților pentru fiecare hotel
             for index, row in df_filtered.iterrows():
@@ -251,49 +243,18 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
 
         recommendations = []
         for _, row in recommendations_df.iterrows():
-            recommendation = {
-                'address': row['address'],
-                'availability': row['availability'],
-                'check_in': row['check_in'],
-                'check_out': row['check_out'],
-                'cluster': row['cluster'],
-                'country': row['country'],
-                'description': row['description'],
-                'id': row['id'],
-                'images': row['images'],
-                'latitude': row['latitude'],
-                'longitude': row['longitude'],
-                'name': row['name'],
-                'nota_confort': row['nota_confort'],
-                'nota_curăţenie': row['nota_curăţenie'],
-                'nota_facilităţi': row['nota_facilităţi'],
-                'nota_locaţie': row['nota_locaţie'],
-                'nota_personal': row['nota_personal'],
-                'nota_raport_calitate/preţ': row['nota_raport_calitate/preţ'],
-                'nota_wifi_gratuit': row['nota_wifi_gratuit'],
-                'num_reviews': row['num_reviews'],
-                'owner_id': row['owner_id'],
-                'postal_code': row['postal_code'],
-                'region': row['region'],
-                'rooms': [
-                    {
-                        'currency': room.currency,
-                        'persons': room.persons,
-                        'price': room.price,
-                        'room_type': room.room_type
-                    } for room in Property.query.get(row['id']).rooms
-                ],
-                'stars': row['stars'],
-                'total_persons': row['persons'],
-                'total_price': row['price'],
-                'type': row['type'],
-                'preference_score': row['preference_score']
-            }
-
-            # Adăugăm facilitățile la recomandări
-            for col in available_facility_columns:
-                recommendation[col] = row[col]
-
+            property_id = row['id']
+            rooms = Room.query.filter_by(property_id=property_id).all()
+            rooms_list = []
+            for room in rooms:
+                room_dict = room.to_dict()
+                # Eliminăm coloanele de facilități
+                for col in facility_columns:
+                    if col in room_dict:
+                        del room_dict[col]
+                rooms_list.append(room_dict)
+            recommendation = row.to_dict()
+            recommendation['rooms'] = rooms_list
             recommendations.append(recommendation)
 
         return recommendations
