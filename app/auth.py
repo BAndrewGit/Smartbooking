@@ -1,3 +1,5 @@
+import os
+
 import bcrypt
 from dotenv import load_dotenv
 from flask import Blueprint, request, jsonify, current_app
@@ -63,15 +65,15 @@ def login():
 
 # Forgot password
 def send_email(to_email, token):
-    from_email = 'your_email@gmail.com'
-    from_password = 'your_password'
+    from_email = os.getenv('EMAIL_COMPANY')
+    from_password = os.getenv('EMAIL_PASS')
 
     msg = MIMEMultipart()
     msg['From'] = from_email
     msg['To'] = to_email
     msg['Subject'] = 'Reset Your Password'
 
-    reset_url = f'http://localhost:5000/reset_password/{token}'
+    reset_url = f'http://127.0.0.1:5000/reset_password/{token}'
     body = f'Click the following link to reset your password: {reset_url}'
     msg.attach(MIMEText(body, 'plain'))
 

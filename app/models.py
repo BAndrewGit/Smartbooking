@@ -292,6 +292,9 @@ class Payment(db.Model):
     status = db.Column(db.String(20), nullable=False)
     payment_intent_id = db.Column(db.String(50), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    room_id = db.Column(db.Integer, db.ForeignKey('room.id'), nullable=True)
+    check_in_date = db.Column(db.DateTime, nullable=True)
+    check_out_date = db.Column(db.DateTime, nullable=True)
 
     def to_dict(self):
         return {
@@ -301,7 +304,10 @@ class Payment(db.Model):
             'currency': self.currency,
             'status': self.status,
             'payment_intent_id': self.payment_intent_id,
-            'created_at': self.created_at.isoformat()
+            'created_at': self.created_at.isoformat(),
+            'room_id': self.room_id,
+            'check_in_date': self.check_in_date.isoformat() if self.check_in_date else None,
+            'check_out_date': self.check_out_date.isoformat() if self.check_out_date else None
         }
 
 
