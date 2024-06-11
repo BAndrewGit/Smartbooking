@@ -1,3 +1,4 @@
+import time
 import os
 import json
 from datetime import datetime, timezone
@@ -9,7 +10,7 @@ from sqlalchemy import func
 from werkzeug.utils import secure_filename
 from .ai import recommend_properties, predict_price_for_room
 from .models import User, Property, Room, Reservation, Review, Favorite, db, UserPreferences, Payment
-from .payments import refund_payment, create_checkout_session
+from .payments import refund_payment, create_checkout_session, handle_payment_intent_succeeded
 
 stripe.api_key = app.config['STRIPE_SECRET_KEY']
 
@@ -690,7 +691,7 @@ def create_reservation():
     check_in_date = datetime.strptime(data['check_in_date'], '%d-%m-%Y')
     check_out_date = datetime.strptime(data['check_out_date'], '%d-%m-%Y')
 
-    # Verifica disponibilitatea camerei pentru perioada specificată
+    # Check room availability for the specified period
     existing_reservations = Reservation.query.filter(
         Reservation.room_id == data['room_id'],
         Reservation.check_in_date < check_out_date,
@@ -705,7 +706,7 @@ def create_reservation():
     amount = room.price * num_nights
     user_id = get_jwt_identity()
 
-    # Crearea sesiunii de checkout
+    # Create checkout session
     payment_result = create_checkout_session(amount, room.currency, user_id, data['room_id'], data['check_in_date'], data['check_out_date'])
     if 'error' in payment_result:
         return jsonify({'error': payment_result['error']}), 500
@@ -727,49 +728,24 @@ def stripe_webhook():
         event = stripe.Webhook.construct_event(
             payload, sig_header, endpoint_secret
         )
-    except ValueError as e:
-        # Invalid payload
+    except ValueError:
         return jsonify({'error': 'Invalid payload'}), 400
-    except stripe.error.SignatureVerificationError as e:
-        # Invalid signature
+    except stripe.error.SignatureVerificationError:
         return jsonify({'error': 'Invalid signature'}), 400
 
     # Handle the payment_intent.succeeded event
     if event['type'] == 'payment_intent.succeeded':
         intent = event['data']['object']  # contains a stripe.PaymentIntent
-        handle_payment_intent_succeeded(intent)
+
+        # Retry logic to handle race condition
+        for _ in range(10):  # retry up to 10 times
+            payment = Payment.query.filter_by(payment_intent_id=intent['id']).first()
+            if payment:
+                handle_payment_intent_succeeded(intent)
+                break
+            time.sleep(1)  # wait 1 second before retrying
 
     return jsonify({'status': 'success'}), 200
-
-
-def handle_payment_intent_succeeded(intent):
-    payment = Payment.query.filter_by(payment_intent_id=intent['id']).first()
-    if payment:
-        payment.status = 'succeeded'
-        db.session.commit()
-
-        # Crearea rezervării doar după confirmarea plății
-        try:
-            new_reservation = Reservation(
-                user_id=payment.user_id,
-                room_id=payment.room_id,
-                check_in_date=payment.check_in_date,
-                check_out_date=payment.check_out_date,
-                status='confirmed'
-            )
-            db.session.add(new_reservation)
-            db.session.commit()
-        except Exception as e:
-            db.session.rollback()
-            print(f'Error creating reservation: {str(e)}')
-
-
-@routes_bp.route('/reservations', methods=['GET'])
-@jwt_required()
-def get_reservations():
-    user_id = get_jwt_identity()
-    reservations = Reservation.query.filter_by(user_id=user_id).all()
-    return jsonify([reservation.to_dict() for reservation in reservations]), 200
 
 
 @routes_bp.route('/reservations/<int:reservation_id>', methods=['GET'])

@@ -1,7 +1,7 @@
 from datetime import datetime
 from flask import current_app
 import stripe
-from .models import Payment
+from .models import Payment, Reservation
 from . import db
 
 
@@ -10,21 +10,30 @@ stripe.api_key = current_app.config['STRIPE_SECRET_KEY']
 
 def create_checkout_session(amount, currency='ron', user_id=None, room_id=None, check_in_date=None, check_out_date=None):
     try:
-        # Convert 'lei' to 'RON'
         if currency.lower() == 'lei':
             currency = 'ron'
 
-        # Convert dates to datetime objects
         check_in_date = datetime.strptime(check_in_date, '%d-%m-%Y')
         check_out_date = datetime.strptime(check_out_date, '%d-%m-%Y')
 
-        # Creare PaymentIntent
         intent = stripe.PaymentIntent.create(
-            amount=int(amount * 100),  # Amount in subdiviziunea bancnotei
+            amount=int(amount * 100),
             currency=currency,
         )
 
-        # Creare CheckoutSession
+        payment = Payment(
+            user_id=user_id,
+            amount=amount,
+            currency=currency,
+            status='pending',
+            payment_intent_id=intent.id,
+            room_id=room_id,
+            check_in_date=check_in_date,
+            check_out_date=check_out_date
+        )
+        db.session.add(payment)
+        db.session.commit()
+
         checkout_session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=[
@@ -51,20 +60,6 @@ def create_checkout_session(amount, currency='ron', user_id=None, room_id=None, 
             }
         )
 
-        # Salvare detalii plată în baza de date
-        payment = Payment(
-            user_id=user_id,
-            amount=amount,
-            currency=currency,
-            status='pending',
-            payment_intent_id=intent.id,  # Folosim intent.id pentru payment_intent_id
-            room_id=room_id,
-            check_in_date=check_in_date,
-            check_out_date=check_out_date
-        )
-        db.session.add(payment)
-        db.session.commit()
-
         return {
             'checkout_url': checkout_session.url,
             'client_secret': intent.client_secret,
@@ -73,6 +68,27 @@ def create_checkout_session(amount, currency='ron', user_id=None, room_id=None, 
 
     except Exception as e:
         return {'error': str(e)}
+
+
+def handle_payment_intent_succeeded(intent):
+    payment = Payment.query.filter_by(payment_intent_id=intent['id']).first()
+
+    if payment:
+        payment.status = 'succeeded'
+        db.session.commit()
+
+        try:
+            new_reservation = Reservation(
+                user_id=payment.user_id,
+                room_id=payment.room_id,
+                check_in_date=payment.check_in_date,
+                check_out_date=payment.check_out_date,
+                status='confirmed'
+            )
+            db.session.add(new_reservation)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
 
 
 def refund_payment(payment_id):
