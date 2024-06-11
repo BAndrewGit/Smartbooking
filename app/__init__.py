@@ -13,7 +13,7 @@ load_dotenv(dotenv_path='Keys.env')
 
 
 def create_app():
-    app = Flask(__name__)
+    app = Flask(__name__, static_url_path='/static', static_folder='static', template_folder='templates')
     app.config.from_object('config.Config')
 
     db.init_app(app)
@@ -24,7 +24,12 @@ def create_app():
     with app.app_context():
         # Importurile sunt plasate aici pentru a evita importurile circulare
         from . import routes, models, auth, ai, payments
+        from .ai import update_property_clusters  # Importă funcția de actualizare a clusterelor
+
         db.create_all()
+
+        # Actualizarea proprietăților cu clusterele calculate
+        update_property_clusters()
 
         # Înregistrare blueprint-uri
         app.register_blueprint(auth.auth_bp, url_prefix='/auth')

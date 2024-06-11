@@ -156,7 +156,12 @@ class PaymentSchema(Schema):
     status = fields.Str(required=True)
     payment_intent_id = fields.Str(required=True)
     created_at = fields.DateTime(dump_only=True)
+    room_id = fields.Int(required=True)
+    check_in_date = fields.DateTime(required=True, format='%d-%m-%Y')
+    check_out_date = fields.DateTime(required=True, format='%d-%m-%Y')
+
     user = fields.Nested(lambda: UserSchema(only=('id', 'name', 'email')))
+    room = fields.Nested(lambda: RoomSchema(only=('id', 'room_type', 'persons', 'price', 'currency')))
 
     class Meta:
         unknown = EXCLUDE

@@ -1,16 +1,23 @@
+from datetime import datetime
 from flask import current_app
 import stripe
-from .models import Payment
+from .models import Payment, Reservation
 from . import db
 
 
-stripe.api_key = current_app.config['STRIPE_API_KEY']
+stripe.api_key = current_app.config['STRIPE_SECRET_KEY']
 
 
-def create_payment_intent(amount, currency='ron', user_id=None):
+def create_checkout_session(amount, currency='ron', user_id=None, room_id=None, check_in_date=None, check_out_date=None):
     try:
+        if currency.lower() == 'lei':
+            currency = 'ron'
+
+        check_in_date = datetime.strptime(check_in_date, '%d-%m-%Y')
+        check_out_date = datetime.strptime(check_out_date, '%d-%m-%Y')
+
         intent = stripe.PaymentIntent.create(
-            amount=int(amount * 100),  # Amount in subdiviziunea bancnotei
+            amount=int(amount * 100),
             currency=currency,
         )
 
@@ -19,31 +26,69 @@ def create_payment_intent(amount, currency='ron', user_id=None):
             amount=amount,
             currency=currency,
             status='pending',
-            payment_intent_id=intent.id
+            payment_intent_id=intent.id,
+            room_id=room_id,
+            check_in_date=check_in_date,
+            check_out_date=check_out_date
         )
         db.session.add(payment)
         db.session.commit()
 
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[
+                {
+                    'price_data': {
+                        'currency': currency,
+                        'product_data': {
+                            'name': f'Rezervare cazare (Room ID: {room_id})',
+                            'description': f'Check-in: {check_in_date.strftime("%d-%m-%Y")}, Check-out: {check_out_date.strftime("%d-%m-%Y")}',
+                        },
+                        'unit_amount': int(amount * 100),
+                    },
+                    'quantity': 1,
+                },
+            ],
+            mode='payment',
+            success_url=current_app.config['YOUR_DOMAIN'] + '/success.html',
+            cancel_url=current_app.config['YOUR_DOMAIN'] + '/cancel.html',
+            metadata={
+                'user_id': user_id,
+                'room_id': room_id,
+                'check_in_date': check_in_date.strftime('%d-%m-%Y'),
+                'check_out_date': check_out_date.strftime('%d-%m-%Y')
+            }
+        )
+
         return {
+            'checkout_url': checkout_session.url,
             'client_secret': intent.client_secret,
             'payment_id': payment.id
         }
+
     except Exception as e:
         return {'error': str(e)}
 
 
-def confirm_payment(payment_id):
-    try:
-        payment = Payment.query.get_or_404(payment_id)
-        intent = stripe.PaymentIntent.retrieve(payment.payment_intent_id)
-        if intent.status == 'succeeded':
-            payment.status = 'succeeded'
+def handle_payment_intent_succeeded(intent):
+    payment = Payment.query.filter_by(payment_intent_id=intent['id']).first()
+
+    if payment:
+        payment.status = 'succeeded'
+        db.session.commit()
+
+        try:
+            new_reservation = Reservation(
+                user_id=payment.user_id,
+                room_id=payment.room_id,
+                check_in_date=payment.check_in_date,
+                check_out_date=payment.check_out_date,
+                status='confirmed'
+            )
+            db.session.add(new_reservation)
             db.session.commit()
-            return {'message': 'Payment confirmed successfully'}
-        else:
-            return {'error': 'Payment not confirmed'}
-    except Exception as e:
-        return {'error': str(e)}
+        except Exception:
+            db.session.rollback()
 
 
 def refund_payment(payment_id):

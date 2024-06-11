@@ -1,16 +1,18 @@
+import time
 import os
 import json
 from datetime import datetime, timezone
 from functools import wraps
 import stripe
-from flask import Blueprint, request, jsonify, current_app as app
+from flask import Blueprint, request, jsonify, current_app as app, render_template
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from sqlalchemy import func
 from werkzeug.utils import secure_filename
 from .ai import recommend_properties, predict_price_for_room
-from .models import User, Property, Room, Reservation, Review, Favorite, db, UserPreferences
-from .payments import create_payment_intent, confirm_payment, refund_payment
+from .models import User, Property, Room, Reservation, Review, Favorite, db, UserPreferences, Payment
+from .payments import refund_payment, create_checkout_session, handle_payment_intent_succeeded
 
-stripe.api_key = app.config['STRIPE_API_KEY']
+stripe.api_key = app.config['STRIPE_SECRET_KEY']
 
 routes_bp = Blueprint('routes', __name__)
 
@@ -319,7 +321,7 @@ def filter_properties():
 
     # Filtrare proprietăți care au camere disponibile
     properties_query = db.session.query(Property).join(Room).filter(
-        ~Room.id.in_(reserved_rooms)
+        ~Room.id.in_(reserved_rooms.select())
     )
 
     if region:
@@ -403,7 +405,10 @@ def filter_properties():
             preferred_region=region,
             check_in_date=check_in_date,
             check_out_date=check_out_date
-        )[:5]
+        )
+
+        if isinstance(recommendations, list):
+            recommendations = recommendations[:5]
 
         recommendation_ids = {rec['id'] for rec in recommendations}
 
@@ -686,7 +691,7 @@ def create_reservation():
     check_in_date = datetime.strptime(data['check_in_date'], '%d-%m-%Y')
     check_out_date = datetime.strptime(data['check_out_date'], '%d-%m-%Y')
 
-    # Verifica disponibilitatea camerei pentru perioada specificată
+    # Check room availability for the specified period
     existing_reservations = Reservation.query.filter(
         Reservation.room_id == data['room_id'],
         Reservation.check_in_date < check_out_date,
@@ -701,59 +706,46 @@ def create_reservation():
     amount = room.price * num_nights
     user_id = get_jwt_identity()
 
-    # Crearea intenției de plată
-    payment_result = create_payment_intent(amount, room.currency, user_id)
+    # Create checkout session
+    payment_result = create_checkout_session(amount, room.currency, user_id, data['room_id'], data['check_in_date'], data['check_out_date'])
     if 'error' in payment_result:
         return jsonify({'error': payment_result['error']}), 500
 
     return jsonify({
-        'client_secret': payment_result['client_secret'],
+        'checkout_url': payment_result['checkout_url'],
         'payment_id': payment_result['payment_id'],
-        'message': 'Payment initiated successfully'
+        'message': 'Checkout session created successfully'
     }), 200
 
 
-@routes_bp.route('/confirm_reservation', methods=['POST'])
-@jwt_required()
-def confirm_reservation():
-    data = request.get_json()
-    payment_id = data.get('payment_id')
-    room_id = data.get('room_id')
-    check_in_date = data.get('check_in_date')
-    check_out_date = data.get('check_out_date')
+@routes_bp.route('/stripe_webhook', methods=['POST'])
+def stripe_webhook():
+    payload = request.get_data(as_text=True)
+    sig_header = request.headers.get('Stripe-Signature')
+    endpoint_secret = app.config['STRIPE_ENDPOINT_SECRET']
 
-    if not payment_id or not room_id or not check_in_date or not check_out_date:
-        return jsonify({'error': 'Missing required fields'}), 400
-
-    # Confirmarea plății
-    payment_result = confirm_payment(payment_id)
-    if 'error' in payment_result:
-        return jsonify({'error': payment_result['error']}), 500
-
-    # Crearea rezervării doar după confirmarea plății
     try:
-        new_reservation = Reservation(
-            user_id=get_jwt_identity(),
-            room_id=room_id,
-            check_in_date=datetime.strptime(check_in_date, '%d-%m-%Y'),
-            check_out_date=datetime.strptime(check_out_date, '%d-%m-%Y'),
-            status='confirmed'
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, endpoint_secret
         )
-        db.session.add(new_reservation)
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+    except ValueError:
+        return jsonify({'error': 'Invalid payload'}), 400
+    except stripe.error.SignatureVerificationError:
+        return jsonify({'error': 'Invalid signature'}), 400
 
-    return jsonify({'message': 'Reservation created and payment confirmed successfully'}), 201
+    # Handle the payment_intent.succeeded event
+    if event['type'] == 'payment_intent.succeeded':
+        intent = event['data']['object']  # contains a stripe.PaymentIntent
 
+        # Retry logic to handle race condition
+        for _ in range(10):  # retry up to 10 times
+            payment = Payment.query.filter_by(payment_intent_id=intent['id']).first()
+            if payment:
+                handle_payment_intent_succeeded(intent)
+                break
+            time.sleep(1)  # wait 1 second before retrying
 
-@routes_bp.route('/reservations', methods=['GET'])
-@jwt_required()
-def get_reservations():
-    user_id = get_jwt_identity()
-    reservations = Reservation.query.filter_by(user_id=user_id).all()
-    return jsonify([reservation.to_dict() for reservation in reservations]), 200
+    return jsonify({'status': 'success'}), 200
 
 
 @routes_bp.route('/reservations/<int:reservation_id>', methods=['GET'])
@@ -801,8 +793,9 @@ def cancel_reservation(reservation_id):
 @jwt_required()
 def create_review():
     data = request.get_json()
+    user_id = get_jwt_identity()
     new_review = Review(
-        user_id=get_jwt_identity(),
+        user_id=user_id,
         property_id=data['property_id'],
         review_text=data['review_text'],
         rating_personal=data['rating_personal'],
@@ -815,6 +808,14 @@ def create_review():
     )
     db.session.add(new_review)
     db.session.commit()
+
+    # Actualizează numărul de recenzii
+    property_id = data['property_id']
+    num_reviews = db.session.query(func.count(Review.id)).filter(Review.property_id == property_id).scalar()
+    property_to_update = Property.query.get(property_id)
+    property_to_update.num_reviews = num_reviews
+    db.session.commit()
+
     return jsonify({'message': 'Review created successfully'}), 201
 
 
@@ -856,8 +857,16 @@ def delete_review(review_id):
     review = Review.query.get_or_404(review_id)
     if review.user_id != user_id:
         return jsonify({'message': 'Unauthorized'}), 403
+    property_id = review.property_id
     db.session.delete(review)
     db.session.commit()
+
+    # Actualizează numărul de recenzii
+    num_reviews = db.session.query(func.count(Review.id)).filter(Review.property_id == property_id).scalar()
+    property_to_update = Property.query.get(property_id)
+    property_to_update.num_reviews = num_reviews
+    db.session.commit()
+
     return jsonify({'message': 'Review deleted successfully'}), 200
 
 
@@ -895,3 +904,14 @@ def delete_favorite(favorite_id):
     db.session.delete(favorite)
     db.session.commit()
     return jsonify({'message': 'Favorite deleted successfully'}), 200
+
+
+# Rute pentru paginile de succes și anulare
+@routes_bp.route('/success.html')
+def success():
+    return render_template('success.html')
+
+
+@routes_bp.route('/cancel.html')
+def cancel():
+    return render_template('cancel.html')

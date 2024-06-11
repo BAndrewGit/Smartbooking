@@ -1,4 +1,4 @@
-from sqlalchemy import JSON
+from sqlalchemy import JSON, func
 from . import db
 from datetime import datetime, timezone
 from enum import Enum
@@ -64,7 +64,7 @@ class Property(db.Model):
     longitude = db.Column(db.Float)
     check_in = db.Column(db.String(20))
     check_out = db.Column(db.String(20))
-    num_reviews = db.Column(db.Integer)
+    num_reviews = db.Column(db.Integer, default=0)
     availability = db.Column(db.Boolean, default=True)
     stars = db.Column(db.Integer)
     type = db.Column(db.Enum(PropertyType), nullable=False)
@@ -76,6 +76,10 @@ class Property(db.Model):
     reservations = db.relationship('Reservation', backref='property', cascade='all, delete-orphan')
     reviews = db.relationship('Review', backref='property', cascade='all, delete-orphan')
     favorites = db.relationship('Favorite', backref='property', cascade='all, delete-orphan')
+
+    def average_rating(self, attribute):
+        avg = db.session.query(func.avg(getattr(Review, attribute))).filter(Review.property_id == self.id).scalar()
+        return avg if avg is not None else 0
 
     def to_dict(self):
         return {
@@ -96,7 +100,14 @@ class Property(db.Model):
             'type': self.type.value,
             'description': self.description,
             'images': self.images,
-            'cluster': self.cluster
+            'cluster': self.cluster,
+            'nota_personal': self.average_rating('rating_personal'),
+            'nota_facilităţi': self.average_rating('rating_facilities'),
+            'nota_curăţenie': self.average_rating('rating_cleanliness'),
+            'nota_confort': self.average_rating('rating_comfort'),
+            'nota_raport_calitate/preţ': self.average_rating('rating_value_for_money'),
+            'nota_locaţie': self.average_rating('rating_location'),
+            'nota_wifi_gratuit': self.average_rating('rating_wifi')
         }
 
 
@@ -281,6 +292,9 @@ class Payment(db.Model):
     status = db.Column(db.String(20), nullable=False)
     payment_intent_id = db.Column(db.String(50), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    room_id = db.Column(db.Integer, db.ForeignKey('room.id'), nullable=True)
+    check_in_date = db.Column(db.DateTime, nullable=True)
+    check_out_date = db.Column(db.DateTime, nullable=True)
 
     def to_dict(self):
         return {
@@ -290,7 +304,10 @@ class Payment(db.Model):
             'currency': self.currency,
             'status': self.status,
             'payment_intent_id': self.payment_intent_id,
-            'created_at': self.created_at.isoformat()
+            'created_at': self.created_at.isoformat(),
+            'room_id': self.room_id,
+            'check_in_date': self.check_in_date.isoformat() if self.check_in_date else None,
+            'check_out_date': self.check_out_date.isoformat() if self.check_out_date else None
         }
 
 
