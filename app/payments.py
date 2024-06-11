@@ -8,8 +8,6 @@ from . import db
 stripe.api_key = current_app.config['STRIPE_SECRET_KEY']
 
 
-from datetime import datetime
-
 def create_checkout_session(amount, currency='ron', user_id=None, room_id=None, check_in_date=None, check_out_date=None):
     try:
         # Convert 'lei' to 'RON'

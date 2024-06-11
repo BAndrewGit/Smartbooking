@@ -728,33 +728,40 @@ def stripe_webhook():
             payload, sig_header, endpoint_secret
         )
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        # Invalid payload
+        return jsonify({'error': 'Invalid payload'}), 400
     except stripe.error.SignatureVerificationError as e:
-        return jsonify({'error': str(e)}), 400
+        # Invalid signature
+        return jsonify({'error': 'Invalid signature'}), 400
 
-    # Handle the event
-    if event['type'] == 'checkout.session.completed':
-        session = event['data']['object']
+    # Handle the payment_intent.succeeded event
+    if event['type'] == 'payment_intent.succeeded':
+        intent = event['data']['object']  # contains a stripe.PaymentIntent
+        handle_payment_intent_succeeded(intent)
 
-        # Fulfill the purchase... update the payment status and create reservation
-        payment_intent_id = session['payment_intent']
-        payment = Payment.query.filter_by(payment_intent_id=payment_intent_id).first()
-        if payment:
-            payment.status = 'succeeded'
-            db.session.commit()
+    return jsonify({'status': 'success'}), 200
 
-            # Create reservation if payment is successful
+
+def handle_payment_intent_succeeded(intent):
+    payment = Payment.query.filter_by(payment_intent_id=intent['id']).first()
+    if payment:
+        payment.status = 'succeeded'
+        db.session.commit()
+
+        # Crearea rezervării doar după confirmarea plății
+        try:
             new_reservation = Reservation(
                 user_id=payment.user_id,
-                room_id=session['metadata']['room_id'],
-                check_in_date=datetime.strptime(session['metadata']['check_in_date'], '%d-%m-%Y'),
-                check_out_date=datetime.strptime(session['metadata']['check_out_date'], '%d-%m-%Y'),
+                room_id=payment.room_id,
+                check_in_date=payment.check_in_date,
+                check_out_date=payment.check_out_date,
                 status='confirmed'
             )
             db.session.add(new_reservation)
             db.session.commit()
-
-    return jsonify({'status': 'success'}), 200
+        except Exception as e:
+            db.session.rollback()
+            print(f'Error creating reservation: {str(e)}')
 
 
 @routes_bp.route('/reservations', methods=['GET'])
