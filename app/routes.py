@@ -773,7 +773,7 @@ def cancel_reservation(reservation_id):
         return jsonify({'message': 'Unauthorized'}), 403
 
     # Verifică dacă anularea este cu cel puțin 15 de zile înainte de check-in
-    if (reservation.check_in_date - datetime.now(timezone.utc)).days < 15:
+    if (reservation.check_in_date - datetime.utcnow()).days < 15:
         return jsonify({'message': 'Cancellation period has passed'}), 400
 
     # Returnează banii utilizând Stripe

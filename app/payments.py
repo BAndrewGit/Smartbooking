@@ -1,7 +1,7 @@
 from datetime import datetime
 from flask import current_app
 import stripe
-from .models import Payment, Reservation
+from .models import Payment, Reservation, Room
 from . import db
 
 
@@ -60,6 +60,23 @@ def create_checkout_session(amount, currency='ron', user_id=None, room_id=None, 
             }
         )
 
+        # Update payment status to succeeded in DB
+        payment.status = 'succeeded'
+        db.session.commit()
+
+        # Create a new reservation
+        room = Room.query.get(room_id)
+        new_reservation = Reservation(
+            user_id=user_id,
+            property_id=room.property_id,
+            room_id=room_id,
+            check_in_date=check_in_date,
+            check_out_date=check_out_date,
+            status='confirmed'
+        )
+        db.session.add(new_reservation)
+        db.session.commit()
+
         return {
             'checkout_url': checkout_session.url,
             'client_secret': intent.client_secret,
@@ -71,12 +88,9 @@ def create_checkout_session(amount, currency='ron', user_id=None, room_id=None, 
 
 
 def handle_payment_intent_succeeded(intent):
-    payment = Payment.query.filter_by(payment_intent_id=intent['id']).first()
+    payment = Payment.query.get(intent['metadata']['payment_id'])
 
-    if payment:
-        payment.status = 'succeeded'
-        db.session.commit()
-
+    if payment and payment.status == 'succeeded':
         try:
             new_reservation = Reservation(
                 user_id=payment.user_id,
