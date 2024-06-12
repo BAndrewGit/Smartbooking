@@ -335,3 +335,20 @@ class UserPreferences(db.Model):
             'rating_location': self.rating_location,
             'rating_wifi': self.rating_wifi
         }
+
+
+class RevokedToken(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    jti = db.Column(db.String(120), nullable=False, unique=True)
+
+    def __init__(self, jti):
+        self.jti = jti
+
+    def save_to_db(self):
+        db.session.add(self)
+        db.session.commit()
+
+    @classmethod
+    def is_jti_blacklisted(cls, jti):
+        query = cls.query.filter_by(jti=jti).first()
+        return bool(query)

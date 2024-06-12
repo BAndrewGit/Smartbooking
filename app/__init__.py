@@ -35,4 +35,9 @@ def create_app():
         app.register_blueprint(auth.auth_bp, url_prefix='/auth')
         app.register_blueprint(routes.routes_bp)
 
+    @jwt.token_in_blocklist_loader
+    def check_if_token_revoked(jwt_header, jwt_payload):
+        jti = jwt_payload['jti']
+        return models.RevokedToken.is_jti_blacklisted(jti)
+
     return app

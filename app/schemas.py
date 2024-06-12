@@ -180,3 +180,11 @@ class UserPreferencesSchema(Schema):
 
     class Meta:
         unknown = EXCLUDE
+
+
+class RevokedTokenSchema(Schema):
+    id = fields.Int(dump_only=True)
+    jti = fields.Str(required=True)
+
+    class Meta:
+        unknown = EXCLUDE

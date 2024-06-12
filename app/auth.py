@@ -1,11 +1,11 @@
 import os
-
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, create_refresh_token
 import bcrypt
 from dotenv import load_dotenv
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token
 from itsdangerous import URLSafeTimedSerializer
-from .models import User
+from .models import User, RevokedToken
 from . import db
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -57,8 +57,9 @@ def login():
 
     user = User.query.filter_by(email=email).first()
     if user and bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
-        access_token = create_access_token(identity=user.id, additional_claims={"role": user.role})
-        return jsonify({'access_token': access_token}), 200
+        access_token = create_access_token(identity=user.id)
+        refresh_token = create_refresh_token(identity=user.id)
+        return jsonify({'access_token': access_token, 'refresh_token': refresh_token}), 200
     else:
         return jsonify({'message': 'Invalid credentials'}), 401
 
@@ -120,3 +121,23 @@ def reset_password(token):
         return jsonify({'message': 'Password updated successfully'}), 200
     else:
         return jsonify({'message': 'User not found or invalid password'}), 400
+
+
+# Refresh route
+@auth_bp.route('/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+def refresh():
+    current_user = get_jwt_identity()
+    new_access_token = create_access_token(identity=current_user)
+    return jsonify({'access_token': new_access_token}), 200
+
+
+# Logout route
+@auth_bp.route('/logout', methods=['POST'])
+@jwt_required()
+def logout():
+    jti = get_jwt()['jti']
+    revoked_token = RevokedToken(jti=jti)
+    revoked_token.save_to_db()
+    return jsonify({"msg": "Successfully logged out"}), 200
+
