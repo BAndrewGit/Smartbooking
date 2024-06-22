@@ -48,7 +48,7 @@ class User(db.Model):
             'name': self.name,
             'email': self.email,
             'role': self.role,
-            'created_at': self.review_date.isoformat()
+            'created_at': self.created_at.isoformat()
         }
 
 

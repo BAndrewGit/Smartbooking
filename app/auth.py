@@ -57,7 +57,8 @@ def login():
 
     user = User.query.filter_by(email=email).first()
     if user and bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
-        access_token = create_access_token(identity=user.id)
+        additional_claims = {"role": user.role}
+        access_token = create_access_token(identity=user.id, additional_claims=additional_claims)
         refresh_token = create_refresh_token(identity=user.id)
         return jsonify({'access_token': access_token, 'refresh_token': refresh_token}), 200
     else:
