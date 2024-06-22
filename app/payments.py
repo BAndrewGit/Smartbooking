@@ -1,14 +1,14 @@
 from datetime import datetime
 from flask import current_app
 import stripe
-from .models import Payment, Reservation, Room
+from .models import Payment, Reservation, Room, Property
 from . import db
 
 
 stripe.api_key = current_app.config['STRIPE_SECRET_KEY']
 
 
-def create_checkout_session(amount, currency='ron', user_id=None, room_id=None, check_in_date=None, check_out_date=None):
+def create_checkout_session(amount, currency='ron', user_id=None, room_ids=None, check_in_date=None, check_out_date=None, property_id=None):
     try:
         if currency.lower() == 'lei':
             currency = 'ron'
@@ -27,13 +27,15 @@ def create_checkout_session(amount, currency='ron', user_id=None, room_id=None, 
             currency=currency,
             status='pending',
             payment_intent_id=intent.id,
-            room_id=room_id,
+            property_id=property_id,
+            room_ids=room_ids,
             check_in_date=check_in_date,
             check_out_date=check_out_date
         )
         db.session.add(payment)
         db.session.commit()
 
+        room_names = ', '.join([f'Room ID: {room_id}' for room_id in room_ids])
         checkout_session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=[
@@ -41,7 +43,7 @@ def create_checkout_session(amount, currency='ron', user_id=None, room_id=None, 
                     'price_data': {
                         'currency': currency,
                         'product_data': {
-                            'name': f'Rezervare cazare (Room ID: {room_id})',
+                            'name': f'Rezervare cazare ({room_names})',
                             'description': f'Check-in: {check_in_date.strftime("%d-%m-%Y")}, Check-out: {check_out_date.strftime("%d-%m-%Y")}',
                         },
                         'unit_amount': int(amount * 100),
@@ -54,7 +56,7 @@ def create_checkout_session(amount, currency='ron', user_id=None, room_id=None, 
             cancel_url=current_app.config['YOUR_DOMAIN'] + '/cancel.html',
             metadata={
                 'user_id': user_id,
-                'room_id': room_id,
+                'room_ids': ','.join(map(str, room_ids)),
                 'check_in_date': check_in_date.strftime('%d-%m-%Y'),
                 'check_out_date': check_out_date.strftime('%d-%m-%Y')
             }
@@ -64,17 +66,19 @@ def create_checkout_session(amount, currency='ron', user_id=None, room_id=None, 
         payment.status = 'succeeded'
         db.session.commit()
 
-        # Create a new reservation
-        room = Room.query.get(room_id)
-        new_reservation = Reservation(
-            user_id=user_id,
-            property_id=room.property_id,
-            room_id=room_id,
-            check_in_date=check_in_date,
-            check_out_date=check_out_date,
-            status='confirmed'
-        )
-        db.session.add(new_reservation)
+        # Create a new reservation for each room
+        for room_id in room_ids:
+            room = Room.query.get(room_id)
+            new_reservation = Reservation(
+                user_id=user_id,
+                property_id=room.property_id,
+                check_in_date=check_in_date,
+                check_out_date=check_out_date,
+                status='confirmed'
+            )
+            new_reservation.rooms.append(room)
+            db.session.add(new_reservation)
+
         db.session.commit()
 
         return {
@@ -92,17 +96,22 @@ def handle_payment_intent_succeeded(intent):
 
     if payment and payment.status == 'succeeded':
         try:
-            new_reservation = Reservation(
-                user_id=payment.user_id,
-                room_id=payment.room_id,
-                check_in_date=payment.check_in_date,
-                check_out_date=payment.check_out_date,
-                status='confirmed'
-            )
-            db.session.add(new_reservation)
+            room_ids = [int(id) for id in intent['metadata']['room_ids'].split(',')]
+            for room_id in room_ids:
+                new_reservation = Reservation(
+                    user_id=payment.user_id,
+                    property_id=payment.property_id,
+                    room_id=room_id,
+                    check_in_date=payment.check_in_date,
+                    check_out_date=payment.check_out_date,
+                    status='confirmed'
+                )
+                db.session.add(new_reservation)
+
             db.session.commit()
         except Exception:
             db.session.rollback()
+
 
 
 def refund_payment(payment_id):

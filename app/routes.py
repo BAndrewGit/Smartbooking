@@ -716,23 +716,48 @@ def create_reservation():
     check_in_date = datetime.strptime(data['check_in_date'], '%d-%m-%Y')
     check_out_date = datetime.strptime(data['check_out_date'], '%d-%m-%Y')
 
-    # Check room availability for the specified period
-    existing_reservations = Reservation.query.filter(
-        Reservation.room_id == data['room_id'],
-        Reservation.check_in_date < check_out_date,
-        Reservation.check_out_date > check_in_date
-    ).all()
+    room_ids = data['room_ids']  # List of room IDs
+    if not room_ids or not isinstance(room_ids, list):
+        return jsonify({'message': 'room_ids must be a list of room IDs'}), 400
 
-    if existing_reservations:
-        return jsonify({'message': 'Room is already reserved for the specified period'}), 400
+    total_amount = 0
+    currency = None
+    line_items = []
 
-    room = Room.query.get_or_404(data['room_id'])
-    num_nights = (check_out_date - check_in_date).days
-    amount = room.price * num_nights
+    for room_id in room_ids:
+        # Check room availability for the specified period
+        existing_reservations = Reservation.query.filter(
+            Reservation.rooms.any(id=room_id),
+            Reservation.check_in_date < check_out_date,
+            Reservation.check_out_date > check_in_date
+        ).all()
+
+        if existing_reservations:
+            return jsonify({'message': f'Room {room_id} is already reserved for the specified period'}), 400
+
+        room = Room.query.get_or_404(room_id)
+        num_nights = (check_out_date - check_in_date).days
+        total_amount += room.price * num_nights
+
+        line_items.append({
+            'price_data': {
+                'currency': room.currency,
+                'product_data': {
+                    'name': room.room_type,
+                },
+                'unit_amount': int(room.price * 100),  # Stripe acceptă valoarea în cenți
+            },
+            'quantity': num_nights,
+        })
+
+        if currency is None:
+            currency = room.currency
+
     user_id = get_jwt_identity()
+    property_id = data['property_id']  # Adăugăm referința la `property_id`
 
-    # Create checkout session
-    payment_result = create_checkout_session(amount, room.currency, user_id, data['room_id'], data['check_in_date'], data['check_out_date'])
+    # Creare checkout session
+    payment_result = create_checkout_session(total_amount, currency, user_id, room_ids, data['check_in_date'], data['check_out_date'], property_id)
     if 'error' in payment_result:
         return jsonify({'error': payment_result['error']}), 500
 
@@ -741,6 +766,17 @@ def create_reservation():
         'payment_id': payment_result['payment_id'],
         'message': 'Checkout session created successfully'
     }), 200
+
+
+# Rute pentru paginile de succes și anulare
+@routes_bp.route('/success.html')
+def success():
+    return render_template('success.html')
+
+
+@routes_bp.route('/cancel.html')
+def cancel():
+    return render_template('cancel.html')
 
 
 @routes_bp.route('/stripe_webhook', methods=['POST'])
@@ -931,12 +967,4 @@ def delete_favorite(favorite_id):
     return jsonify({'message': 'Favorite deleted successfully'}), 200
 
 
-# Rute pentru paginile de succes și anulare
-@routes_bp.route('/success.html')
-def success():
-    return render_template('success.html')
 
-
-@routes_bp.route('/cancel.html')
-def cancel():
-    return render_template('cancel.html')

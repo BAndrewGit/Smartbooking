@@ -48,12 +48,12 @@ class PropertySchema(Schema):
 class ReservationSchema(Schema):
     id = fields.Int(dump_only=True)
     user_id = fields.Int(required=True)
-    room_id = fields.Int(required=True)
+    property_id = fields.Int(required=True)
     check_in_date = fields.DateTime(required=True, format='%d-%m-%Y')
     check_out_date = fields.DateTime(required=True, format='%d-%m-%Y')
     status = fields.Str(required=True)
     user = fields.Nested(lambda: UserSchema(only=('id', 'name', 'email')))
-    room = fields.Nested(lambda: RoomSchema(only=('id', 'room_type', 'persons')))
+    rooms = fields.List(fields.Nested(lambda: RoomSchema(only=('id', 'room_type', 'persons', 'price', 'currency'))))
     property = fields.Nested(lambda: PropertySchema(only=('id', 'name', 'address')))
 
     class Meta:
@@ -156,12 +156,13 @@ class PaymentSchema(Schema):
     status = fields.Str(required=True)
     payment_intent_id = fields.Str(required=True)
     created_at = fields.DateTime(dump_only=True)
-    room_id = fields.Int(required=True)
+    property_id = fields.Int(required=True)
+    room_ids = fields.List(fields.Int(), required=True)
     check_in_date = fields.DateTime(required=True, format='%d-%m-%Y')
     check_out_date = fields.DateTime(required=True, format='%d-%m-%Y')
 
     user = fields.Nested(lambda: UserSchema(only=('id', 'name', 'email')))
-    room = fields.Nested(lambda: RoomSchema(only=('id', 'room_type', 'persons', 'price', 'currency')))
+    rooms = fields.List(fields.Nested(RoomSchema, only=('id', 'room_type', 'persons', 'price', 'currency')))
 
     class Meta:
         unknown = EXCLUDE

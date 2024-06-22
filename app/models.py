@@ -1,4 +1,5 @@
-from sqlalchemy import JSON, func
+from sqlalchemy import JSON, func, Table, Column, Integer, ForeignKey
+from sqlalchemy.orm import relationship
 from . import db
 from datetime import datetime, timezone
 from enum import Enum
@@ -26,6 +27,11 @@ class PropertyType(Enum):
     FARM_HOLIDAY = "farm_holiday"
     HOSTEL = "hostel"
     CAMP = "camp"
+
+
+reservation_rooms = Table('reservation_rooms', db.Model.metadata,
+                          Column('reservation_id', Integer, ForeignKey('reservation.id'), primary_key=True),
+                          Column('room_id', Integer, ForeignKey('room.id'), primary_key=True))
 
 
 class User(db.Model):
@@ -120,7 +126,7 @@ class Room(db.Model):
     currency = db.Column(db.String(10))
     price_rating = db.Column(db.String(20))
 
-    reservations = db.relationship('Reservation', backref='room', cascade='all, delete-orphan')
+    reservations = db.relationship('Reservation', secondary=reservation_rooms, back_populates='rooms')
 
     vedere_la_oras = db.Column(db.Boolean, default=False)
     menaj_zilnic = db.Column(db.Boolean, default=False)
@@ -221,20 +227,21 @@ class Reservation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     property_id = db.Column(db.Integer, db.ForeignKey('property.id'), nullable=False)
-    room_id = db.Column(db.Integer, db.ForeignKey('room.id'), nullable=False)
     check_in_date = db.Column(db.DateTime, nullable=False)
     check_out_date = db.Column(db.DateTime, nullable=False)
     status = db.Column(db.String(20))
+
+    rooms = db.relationship('Room', secondary=reservation_rooms, back_populates='reservations')
 
     def to_dict(self):
         return {
             'id': self.id,
             'user_id': self.user_id,
             'property_id': self.property_id,
-            'room_id': self.room_id,
+            'rooms': [room.to_dict() for room in self.rooms],
             'check_in_date': self.check_in_date.isoformat(),
             'check_out_date': self.check_out_date.isoformat(),
-            'status': self.cancellation_date.isoformat() if self.cancellation_date else None
+            'status': self.status
         }
 
 
@@ -292,7 +299,8 @@ class Payment(db.Model):
     status = db.Column(db.String(20), nullable=False)
     payment_intent_id = db.Column(db.String(50), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
-    room_id = db.Column(db.Integer, db.ForeignKey('room.id'), nullable=True)
+    property_id = db.Column(db.Integer, db.ForeignKey('property.id'), nullable=False)
+    room_ids = db.Column(JSON, nullable=False)
     check_in_date = db.Column(db.DateTime, nullable=True)
     check_out_date = db.Column(db.DateTime, nullable=True)
 
@@ -305,7 +313,8 @@ class Payment(db.Model):
             'status': self.status,
             'payment_intent_id': self.payment_intent_id,
             'created_at': self.created_at.isoformat(),
-            'room_id': self.room_id,
+            'property_id': self.property_id,
+            'room_ids': self.room_ids,
             'check_in_date': self.check_in_date.isoformat() if self.check_in_date else None,
             'check_out_date': self.check_out_date.isoformat() if self.check_out_date else None
         }
