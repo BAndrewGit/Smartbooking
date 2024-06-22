@@ -490,6 +490,20 @@ def update_property(property_id):
     return jsonify({'message': 'Property updated successfully'}), 200
 
 
+@routes_bp.route('/properties/owner', methods=['GET'])
+@jwt_required()
+def get_owner_properties():
+    user_id = get_jwt_identity()
+    claims = get_jwt()
+
+    if claims['role'] == 'superadmin':
+        properties = Property.query.all()
+    else:
+        properties = Property.query.filter_by(owner_id=user_id).all()
+
+    return jsonify([property.to_dict() for property in properties]), 200
+
+
 @routes_bp.route('/properties/<int:property_id>', methods=['DELETE'])
 @jwt_required()
 @check_property_owner_or_superadmin
