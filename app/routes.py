@@ -6,7 +6,7 @@ from functools import wraps
 import stripe
 from flask import Blueprint, request, jsonify, current_app as app, render_template
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
-from sqlalchemy import func
+from sqlalchemy import func, and_
 from werkzeug.utils import secure_filename
 from .ai import recommend_properties, predict_price_for_room
 from .models import User, Property, Room, Reservation, Review, Favorite, db, UserPreferences, Payment, reservation_rooms
@@ -617,9 +617,31 @@ def create_room():
     return jsonify(new_room.to_dict()), 201
 
 
+
 @routes_bp.route('/rooms', methods=['GET'])
 def get_rooms():
-    rooms = Room.query.all()
+    property_id = request.args.get('property_id')
+    check_in_date = request.args.get('check_in_date')
+    check_out_date = request.args.get('check_out_date')
+
+    query = Room.query
+
+    # Filtrare după property_id dacă este specificat
+    if property_id:
+        query = query.filter(Room.property_id == property_id)
+
+    # Filtrare după date de check-in și check-out dacă sunt specificate
+    if check_in_date and check_out_date:
+        query = query.filter(
+            ~Room.reservations.any(
+                and_(
+                    Reservation.check_in_date < check_out_date,
+                    Reservation.check_out_date > check_in_date
+                )
+            )
+        )
+
+    rooms = query.all()
     return jsonify([room.to_dict() for room in rooms]), 200
 
 
