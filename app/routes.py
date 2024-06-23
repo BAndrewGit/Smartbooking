@@ -9,7 +9,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from sqlalchemy import func
 from werkzeug.utils import secure_filename
 from .ai import recommend_properties, predict_price_for_room
-from .models import User, Property, Room, Reservation, Review, Favorite, db, UserPreferences, Payment
+from .models import User, Property, Room, Reservation, Review, Favorite, db, UserPreferences, Payment, reservation_rooms
 from .payments import refund_payment, create_checkout_session, handle_payment_intent_succeeded
 
 stripe.api_key = app.config['STRIPE_SECRET_KEY']
@@ -325,9 +325,13 @@ def filter_properties():
         return jsonify({'message': 'Invalid date format. Use dd-mm-yyyy.'}), 400
 
     # Filtrare camere rezervate în perioada specificată
-    reserved_rooms = db.session.query(Reservation.room_id).filter(
-        Reservation.check_in_date < check_out_date,
-        Reservation.check_out_date > check_in_date
+    reserved_rooms = db.session.query(reservation_rooms.c.room_id).filter(
+        reservation_rooms.c.reservation_id.in_(
+            db.session.query(Reservation.id).filter(
+                Reservation.check_in_date < check_out_date,
+                Reservation.check_out_date > check_in_date
+            )
+        )
     ).subquery()
 
     # Filtrare proprietăți care au camere disponibile

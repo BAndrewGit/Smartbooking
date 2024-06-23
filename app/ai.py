@@ -4,7 +4,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.cluster import KMeans
-from .models import Favorite, Property, Room, Review, db, Reservation
+from .models import Favorite, Property, Room, Review, db, Reservation, reservation_rooms
 
 
 # Încărcarea și pregătirea datasetului
@@ -225,14 +225,18 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
                 df_filtered.loc[index, 'preference_score'] += matching_facilities_score
 
         # Obținem lista de camere rezervate în perioada specificată
-        reserved_rooms = db.session.query(Reservation.room_id).filter(
-            Reservation.check_in_date < check_out_date,
-            Reservation.check_out_date > check_in_date
+        reserved_rooms = db.session.query(reservation_rooms.c.room_id).filter(
+            reservation_rooms.c.reservation_id.in_(
+                db.session.query(Reservation.id).filter(
+                    Reservation.check_in_date < check_out_date,
+                    Reservation.check_out_date > check_in_date
+                )
+            )
         ).subquery()
 
         # Filtrăm proprietățile care au camere disponibile
         available_properties_ids = db.session.query(Room.property_id).filter(
-            ~Room.id.in_(reserved_rooms)
+            ~Room.id.in_(db.select(reserved_rooms))
         ).distinct().all()
         available_properties_ids = [item[0] for item in available_properties_ids]
 
@@ -262,3 +266,4 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
     except Exception as e:
         print(f"Error in recommend_properties: {str(e)}")
         return []
+
