@@ -75,7 +75,7 @@ def send_email(to_email, token):
     msg['To'] = to_email
     msg['Subject'] = 'Reset Your Password'
 
-    reset_url = f'http://127.0.0.1:5000/reset_password/{token}'
+    reset_url = f'http://localhost:8080/reset-password/{token}'
     body = f'Click the following link to reset your password: {reset_url}'
     msg.attach(MIMEText(body, 'plain'))
 

@@ -342,9 +342,10 @@ def filter_properties():
     if region:
         properties_query = properties_query.filter(Property.region == region)
 
-    if facilities:
+    if facilities and any(facility.strip() for facility in facilities):
         for facility in facilities:
-            properties_query = properties_query.filter(getattr(Room, facility) == True)
+            if facility:
+                properties_query = properties_query.filter(getattr(Room, facility) == True)
 
     available_properties = properties_query.all()
 
