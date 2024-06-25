@@ -159,7 +159,7 @@ def calculate_price_rating(predicted_price, actual_price, mae_half):
 
 
 # Funcția de recomandare a proprietăților
-def recommend_properties(user_id, user_ratings, max_budget=None, preferred_region=None, check_in_date=None, check_out_date=None):
+def recommend_properties(user_id, user_ratings, max_budget=None, preferred_region=None, check_in_date=None, check_out_date=None, num_persons=None):
     try:
         # Obținem lista de cazări favorite ale utilizatorului curent
         favorite_properties = Favorite.query.filter_by(user_id=user_id).all()
@@ -241,6 +241,11 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
         available_properties_ids = [item[0] for item in available_properties_ids]
 
         df_filtered = df_filtered[df_filtered['id'].isin(available_properties_ids)]
+
+        # Filtrăm proprietățile pentru numărul specificat de persoane
+        if num_persons:
+            df_filtered['total_persons'] = df_filtered.apply(lambda row: sum(room.persons for room in Room.query.filter_by(property_id=row['id']).all()), axis=1)
+            df_filtered = df_filtered[df_filtered['total_persons'] >= num_persons]
 
         # Afișăm primele 5 hoteluri cu cel mai mare scor de preferință
         recommendations_df = df_filtered.nlargest(5, 'preference_score')
