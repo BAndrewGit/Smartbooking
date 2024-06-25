@@ -335,18 +335,18 @@ def filter_properties():
         return jsonify({'message': 'Invalid date format. Use dd-mm-yyyy.'}), 400
 
     # Filtrare camere rezervate în perioada specificată
-    reserved_rooms = db.session.query(reservation_rooms.c.room_id).filter(
+    reserved_rooms_subquery = db.session.query(reservation_rooms.c.room_id).filter(
         reservation_rooms.c.reservation_id.in_(
             db.session.query(Reservation.id).filter(
                 Reservation.check_in_date < check_out_date,
                 Reservation.check_out_date > check_in_date
-            )
+            ).subquery()
         )
     ).subquery()
 
     # Filtrare proprietăți care au camere disponibile
     properties_query = db.session.query(Property).join(Room).filter(
-        ~Room.id.in_(reserved_rooms.select())
+        ~Room.id.in_(reserved_rooms_subquery)
     )
 
     if region:
@@ -430,7 +430,8 @@ def filter_properties():
             max_budget=price_max,
             preferred_region=region,
             check_in_date=check_in_date,
-            check_out_date=check_out_date
+            check_out_date=check_out_date,
+            num_persons=num_persons
         )
 
         if isinstance(recommendations, list):

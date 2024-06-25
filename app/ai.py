@@ -159,7 +159,7 @@ def calculate_price_rating(predicted_price, actual_price, mae_half):
 
 
 # Funcția de recomandare a proprietăților
-def recommend_properties(user_id, user_ratings, max_budget=None, preferred_region=None, check_in_date=None, check_out_date=None):
+def recommend_properties(user_id, user_ratings, max_budget=None, preferred_region=None, check_in_date=None, check_out_date=None, num_persons=None):
     try:
         # Obținem lista de cazări favorite ale utilizatorului curent
         favorite_properties = Favorite.query.filter_by(user_id=user_id).all()
@@ -178,6 +178,8 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
 
         df = pd.DataFrame(property_data)
 
+        print("Total properties:", len(df))
+
         # Calculăm scorul de preferință pentru fiecare hotel
         for index, row in df.iterrows():
             preference_score = 0
@@ -186,20 +188,15 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
                     preference_score += row[category] * user_rating
             df.loc[index, 'preference_score'] = preference_score
 
-        # Identificăm clusterul preferat
-        if preferred_accommodations:
-            preferred_cluster = df[df['name'].isin(preferred_accommodation_names)]['cluster'].mode()[0]
+        # Aplicăm filtrele inițiale
+        df_filtered = df.copy()
 
-            # Filtrăm DataFrame-ul pentru a include doar hotelurile din clusterul preferat
-            df_filtered = df[df['cluster'] == preferred_cluster]
-        else:
-            df_filtered = df.copy()
-
-        # Aplicăm filtrele
-        if max_budget:
+        if 'price' in df.columns and max_budget:
             df_filtered = df_filtered[df_filtered['price'] <= max_budget]
         if preferred_region:
             df_filtered = df_filtered[df_filtered['region'] == preferred_region]
+
+        print("Filtered by budget and region:", len(df_filtered))
 
         # Definirea coloanelor de facilități
         facility_columns = [
@@ -224,23 +221,49 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
                 matching_facilities_score = sum(row[available_facility_columns] * preferred_facilities)
                 df_filtered.loc[index, 'preference_score'] += matching_facilities_score
 
+        print("After facilities score:", len(df_filtered))
+
         # Obținem lista de camere rezervate în perioada specificată
-        reserved_rooms = db.session.query(reservation_rooms.c.room_id).filter(
+        reserved_rooms_subquery = db.session.query(reservation_rooms.c.room_id).filter(
             reservation_rooms.c.reservation_id.in_(
                 db.session.query(Reservation.id).filter(
                     Reservation.check_in_date < check_out_date,
                     Reservation.check_out_date > check_in_date
-                )
+                ).subquery()
             )
         ).subquery()
 
         # Filtrăm proprietățile care au camere disponibile
         available_properties_ids = db.session.query(Room.property_id).filter(
-            ~Room.id.in_(db.select(reserved_rooms))
+            ~Room.id.in_(reserved_rooms_subquery)
         ).distinct().all()
         available_properties_ids = [item[0] for item in available_properties_ids]
 
         df_filtered = df_filtered[df_filtered['id'].isin(available_properties_ids)]
+
+        print("After filtering reserved rooms:", len(df_filtered))
+
+        # Filtrăm proprietățile pentru numărul specificat de persoane
+        if num_persons:
+            def can_accommodate_num_persons(property_id, num_persons):
+                rooms = Room.query.filter_by(property_id=property_id).all()
+                total_persons = sum(room.persons for room in rooms)
+                return total_persons >= num_persons
+
+            df_filtered['can_accommodate'] = df_filtered['id'].apply(lambda x: can_accommodate_num_persons(x, num_persons))
+            df_filtered = df_filtered[df_filtered['can_accommodate']]
+
+        print("After filtering by num_persons:", len(df_filtered))
+
+        # Filtrăm după cluster la final
+        if preferred_accommodations:
+            preferred_cluster = df[df['name'].isin(preferred_accommodation_names)]['cluster'].mode()[0]
+            df_cluster_filtered = df_filtered[df_filtered['cluster'] == preferred_cluster]
+
+            print("After filtering by cluster:", len(df_cluster_filtered))
+
+            if len(df_cluster_filtered) >= 5:
+                df_filtered = df_cluster_filtered
 
         # Afișăm primele 5 hoteluri cu cel mai mare scor de preferință
         recommendations_df = df_filtered.nlargest(5, 'preference_score')
@@ -260,6 +283,8 @@ def recommend_properties(user_id, user_ratings, max_budget=None, preferred_regio
             recommendation = row.to_dict()
             recommendation['rooms'] = rooms_list
             recommendations.append(recommendation)
+
+        print("Final recommendations count:", len(recommendations))
 
         return recommendations
 
