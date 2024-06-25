@@ -246,6 +246,16 @@ def update_user_preferences():
     return jsonify(preferences.to_dict()), 200
 
 
+@routes_bp.route('/user/preferences', methods=['GET'])
+@jwt_required()
+def get_user_preferences():
+    user_id = get_jwt_identity()
+    preferences = UserPreferences.query.filter_by(user_id=user_id).first()
+    if not preferences:
+        return jsonify({'error': 'Preferences not found'}), 404
+    return jsonify(preferences.to_dict()), 200
+
+
 # Property Management
 @routes_bp.route('/properties', methods=['POST'])
 @jwt_required()
