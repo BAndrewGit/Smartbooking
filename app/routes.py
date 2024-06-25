@@ -974,9 +974,16 @@ def delete_review(review_id):
 @jwt_required()
 def create_favorite():
     data = request.get_json()
+    property_id = data.get('property_id')
+
+    # Verifică dacă proprietatea există
+    property_exists = Property.query.get(property_id)
+    if not property_exists:
+        return jsonify({'message': 'Property not found'}), 404
+
     new_favorite = Favorite(
         user_id=get_jwt_identity(),
-        property_id=data['property_id']
+        property_id=property_id
     )
     db.session.add(new_favorite)
     db.session.commit()
@@ -988,8 +995,6 @@ def create_favorite():
 def get_favorites():
     user_id = get_jwt_identity()
     favorites = Favorite.query.filter_by(user_id=user_id).all()
-    if not favorites:
-        return jsonify({'message': 'No favorites found for this user'}), 404
     return jsonify([favorite.to_dict() for favorite in favorites]), 200
 
 
@@ -997,9 +1002,10 @@ def get_favorites():
 @jwt_required()
 def delete_favorite(favorite_id):
     user_id = get_jwt_identity()
-    favorite = Favorite.query.get_or_404(favorite_id)
-    if favorite.user_id != user_id:
-        return jsonify({'message': 'Unauthorized'}), 403
+    favorite = Favorite.query.filter_by(id=favorite_id, user_id=user_id).first()
+    if not favorite:
+        return jsonify({'message': 'Favorite not found'}), 404
+
     db.session.delete(favorite)
     db.session.commit()
     return jsonify({'message': 'Favorite deleted successfully'}), 200
