@@ -1,3 +1,5 @@
+import base64
+import pickle
 import time
 import os
 import json
@@ -16,13 +18,6 @@ from .payments import refund_payment, create_checkout_session, handle_payment_in
 stripe.api_key = app.config['STRIPE_SECRET_KEY']
 
 routes_bp = Blueprint('routes', __name__)
-
-
-# Configurare pentru directorul de încărcare
-UPLOAD_FOLDER = 'uploads/'
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
 # Decorators for access control
@@ -268,14 +263,8 @@ def create_property():
     # Debug: Print the data received
     print("Received data:", data)
 
-    images = request.files.getlist('images') if 'images' in request.files else []  # Obține lista de fișiere
-
-    image_paths = []
-    for image in images:
-        filename = secure_filename(image.filename)
-        image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        image.save(image_path)
-        image_paths.append(image_path)
+    image_base64_strings = data.get('images', [])
+    image_bytes_list = [base64.b64decode(img) for img in image_base64_strings]
 
     try:
         new_property = Property(
@@ -294,7 +283,7 @@ def create_property():
             stars=int(data['stars']),
             type=data['type'],
             description=data.get('description'),
-            images=json.dumps(image_paths)  # Salvăm ca șir JSON
+            images=pickle.dumps(image_bytes_list)  # Store images as pickled binary data
         )
         db.session.add(new_property)
         db.session.commit()
@@ -491,61 +480,6 @@ def get_property(property_id):
     return jsonify(property_dict), 200
 
 
-@routes_bp.route('/properties/<int:property_id>', methods=['PUT'])
-@jwt_required()
-@check_property_owner
-def update_property(property_id):
-    user_id = get_jwt_identity()
-    data = request.json  # Use request.json to read JSON data
-
-    property_item = Property.query.get_or_404(property_id)
-    if property_item.owner_id != user_id:
-        return jsonify({'message': 'Unauthorized'}), 403
-
-    images_to_add = request.files.getlist('images')
-    images_to_remove = data.get('remove_images', [])
-
-    if property_item.images:
-        property_item.images = json.loads(property_item.images)
-    else:
-        property_item.images = []
-
-    if images_to_add:
-        for image in images_to_add:
-            filename = secure_filename(image.filename)
-            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            image.save(image_path)
-            property_item.images.append(image_path)
-
-    if images_to_remove:
-        for image_path in images_to_remove:
-            if image_path in property_item.images:
-                property_item.images.remove(image_path)
-                if os.path.exists(image_path):
-                    os.remove(image_path)
-
-    property_item.images = json.dumps(property_item.images)
-
-    # Updating property fields with received data
-    property_item.name = data.get('name', property_item.name)
-    property_item.address = data.get('address', property_item.address)
-    property_item.postal_code = data.get('postal_code', property_item.postal_code)
-    property_item.country = data.get('country', property_item.country)
-    property_item.region = data.get('region', property_item.region)
-    property_item.latitude = float(data.get('latitude', property_item.latitude))
-    property_item.longitude = float(data.get('longitude', property_item.longitude))
-    property_item.check_in = data.get('check_in', property_item.check_in)
-    property_item.check_out = data.get('check_out', property_item.check_out)
-    property_item.availability = bool(data.get('availability', property_item.availability))
-    property_item.stars = int(data.get('stars', property_item.stars))
-    property_item.type = PropertyType(data.get('type', property_item.type))  # Ensure type is converted to Enum
-    property_item.description = data.get('description', property_item.description)
-
-    db.session.commit()
-
-    return jsonify({'message': 'Property updated successfully'}), 200
-
-
 @routes_bp.route('/properties/owner', methods=['GET'])
 @jwt_required()
 def get_owner_properties():
@@ -557,7 +491,45 @@ def get_owner_properties():
     else:
         properties = Property.query.filter_by(owner_id=user_id).all()
 
-    return jsonify([property.to_dict() for property in properties]), 200
+    properties_list = [property.to_dict() for property in properties]
+
+    return jsonify(properties_list), 200
+
+
+@routes_bp.route('/properties/<int:property_id>', methods=['PUT'])
+@jwt_required()
+@check_property_owner
+def update_property(property_id):
+    user_id = get_jwt_identity()
+    data = request.json
+
+    property_item = Property.query.get_or_404(property_id)
+    if property_item.owner_id != user_id:
+        return jsonify({'message': 'Unauthorized'}), 403
+
+    # Manage images
+    image_base64_strings = data.get('images', [])
+    image_bytes_list = [base64.b64decode(img) for img in image_base64_strings]
+    property_item.images = pickle.dumps(image_bytes_list)  # Store images as pickled binary data
+
+    # Update other properties
+    property_item.name = data.get('name', property_item.name)
+    property_item.address = data.get('address', property_item.address)
+    property_item.postal_code = data.get('postal_code', property_item.postal_code)
+    property_item.country = data.get('country', property_item.country)
+    property_item.region = data.get('region', property_item.region)
+    property_item.latitude = float(data.get('latitude', property_item.latitude))
+    property_item.longitude = float(data.get('longitude', property_item.longitude))
+    property_item.check_in = data.get('check_in', property_item.check_in)
+    property_item.check_out = data.get('check_out', property_item.check_out)
+    property_item.availability = bool(data.get('availability', property_item.availability))
+    property_item.stars = int(data.get('stars', property_item.stars))
+    property_item.type = PropertyType(data.get('type', property_item.type))
+    property_item.description = data.get('description', property_item.description)
+
+    db.session.commit()
+
+    return jsonify({'message': 'Property updated successfully'}), 200
 
 
 @routes_bp.route('/properties/<int:property_id>', methods=['DELETE'])
@@ -569,10 +541,14 @@ def delete_property(property_id):
     if not property_item:
         return jsonify({'message': 'Property not found'}), 404
 
-    db.session.delete(property_item)
-    db.session.commit()
+    try:
+        db.session.delete(property_item)
+        db.session.commit()
 
-    return jsonify({'message': 'Property deleted successfully'}), 200
+        return jsonify({'message': 'Property deleted successfully'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': 'An error occurred', 'error': str(e)}), 500
 
 
 # Room Management

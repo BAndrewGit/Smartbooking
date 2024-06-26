@@ -1,9 +1,12 @@
-from sqlalchemy import JSON, func, Table, Column, Integer, ForeignKey
+from sqlalchemy import JSON, func, Table, Column, Integer, ForeignKey, LargeBinary
+from sqlalchemy.dialects.mysql import LONGBLOB
 from sqlalchemy.orm import relationship
 from . import db
 from datetime import datetime, timezone
 from enum import Enum
-
+import base64
+import pickle
+import json
 
 class PropertyType(Enum):
     HOTEL = "hotel"
@@ -58,6 +61,10 @@ class User(db.Model):
         }
 
 
+from sqlalchemy import JSON, func, Table, Column, Integer, ForeignKey, LargeBinary
+import base64
+import pickle
+
 class Property(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     owner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -75,7 +82,7 @@ class Property(db.Model):
     stars = db.Column(db.Integer)
     type = db.Column(db.Enum(PropertyType), nullable=False)
     description = db.Column(db.Text)
-    images = db.Column(JSON, nullable=True)
+    images = Column(LargeBinary)
     cluster = db.Column(db.Integer)
 
     rooms = db.relationship('Room', backref='property', cascade='all, delete-orphan')
@@ -88,6 +95,11 @@ class Property(db.Model):
         return avg if avg is not None else 0
 
     def to_dict(self):
+        image_list = []
+        if self.images:
+            image_bytes_list = pickle.loads(self.images)
+            image_list = [base64.b64encode(img).decode('utf-8') for img in image_bytes_list]
+
         return {
             'id': self.id,
             'owner_id': self.owner_id,
@@ -105,7 +117,7 @@ class Property(db.Model):
             'stars': self.stars,
             'type': self.type.value if isinstance(self.type, PropertyType) else self.type,
             'description': self.description,
-            'images': self.images,
+            'images': image_list,
             'cluster': self.cluster,
             'nota_personal': self.average_rating('rating_personal'),
             'nota_facilităţi': self.average_rating('rating_facilities'),
