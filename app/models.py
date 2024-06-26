@@ -103,7 +103,7 @@ class Property(db.Model):
             'num_reviews': self.num_reviews,
             'availability': self.availability,
             'stars': self.stars,
-            'type': self.type.value,
+            'type': self.type.value if isinstance(self.type, PropertyType) else self.type,
             'description': self.description,
             'images': self.images,
             'cluster': self.cluster,

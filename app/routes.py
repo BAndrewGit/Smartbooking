@@ -9,7 +9,8 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from sqlalchemy import func, and_
 from werkzeug.utils import secure_filename
 from .ai import recommend_properties, predict_price_for_room
-from .models import User, Property, Room, Reservation, Review, Favorite, db, UserPreferences, Payment, reservation_rooms
+from .models import User, Property, Room, Reservation, Review, Favorite, db, UserPreferences, Payment, \
+    reservation_rooms, PropertyType
 from .payments import refund_payment, create_checkout_session, handle_payment_intent_succeeded
 
 stripe.api_key = app.config['STRIPE_SECRET_KEY']
@@ -44,14 +45,14 @@ def check_property_owner_or_superadmin(f):
     def decorated_function(*args, **kwargs):
         user_id = get_jwt_identity()
         claims = get_jwt()
-        room_id = kwargs.get('room_id')
-        room = Room.query.get_or_404(room_id)
-        property_item = Property.query.get_or_404(room.property_id)
+        property_id = kwargs.get('property_id')
+        property_item = Property.query.get_or_404(property_id)
         if property_item.owner_id != user_id and claims['role'] != 'superadmin':
             return jsonify({'message': 'Unauthorized'}), 403
         return f(*args, **kwargs)
 
     return decorated_function
+
 
 
 def check_property_owner(f):
@@ -262,9 +263,12 @@ def get_user_preferences():
 @role_required('owner')
 def create_property():
     user_id = get_jwt_identity()
-    data = request.form.to_dict()
+    data = request.json  # Use request.json to read JSON data
 
-    images = request.files.getlist('images')  # Obține lista de fișiere
+    # Debug: Print the data received
+    print("Received data:", data)
+
+    images = request.files.getlist('images') if 'images' in request.files else []  # Obține lista de fișiere
 
     image_paths = []
     for image in images:
@@ -273,28 +277,32 @@ def create_property():
         image.save(image_path)
         image_paths.append(image_path)
 
-    new_property = Property(
-        owner_id=user_id,
-        name=data['name'],
-        address=data['address'],
-        postal_code=data['postal_code'],
-        country=data['country'],
-        region=data['region'],
-        latitude=float(data['latitude']),
-        longitude=float(data['longitude']),
-        check_in=data['check_in'],
-        check_out=data['check_out'],
-        num_reviews=int(data['num_reviews']),
-        availability=bool(data['availability']),
-        stars=int(data['stars']),
-        type=data['type'],
-        description=data['description'],
-        images=json.dumps(image_paths)  # Salvăm ca șir JSON
-    )
-    db.session.add(new_property)
-    db.session.commit()
-
-    return jsonify({'message': 'Property created successfully'}), 201
+    try:
+        new_property = Property(
+            owner_id=user_id,
+            name=data['name'],
+            address=data['address'],
+            postal_code=data.get('postal_code'),
+            country=data.get('country'),
+            region=data.get('region'),
+            latitude=float(data['latitude']) if data.get('latitude') else None,
+            longitude=float(data['longitude']) if data.get('longitude') else None,
+            check_in=data.get('check_in'),
+            check_out=data.get('check_out'),
+            num_reviews=0,  # Setăm numărul de recenzii la 0
+            availability=True,  # Setăm disponibilitatea la true
+            stars=int(data['stars']),
+            type=data['type'],
+            description=data.get('description'),
+            images=json.dumps(image_paths)  # Salvăm ca șir JSON
+        )
+        db.session.add(new_property)
+        db.session.commit()
+        return jsonify({'message': 'Property created successfully'}), 201
+    except KeyError as e:
+        return jsonify({'message': f'Missing field: {str(e)}'}), 400
+    except Exception as e:
+        return jsonify({'message': 'An error occurred', 'error': str(e)}), 500
 
 
 @routes_bp.route('/filter_properties', methods=['GET'])
@@ -458,6 +466,31 @@ def filter_properties():
         }), 200
 
 
+@routes_bp.route('/properties/<int:property_id>', methods=['GET'])
+def get_property(property_id):
+    property = Property.query.get(property_id)
+    if not property:
+        return jsonify({'message': 'Property not found'}), 404
+
+    property_dict = property.to_dict()
+
+    # Calculăm nota medie
+    avg_rating = (
+        property_dict.get('nota_personal', 0) +
+        property_dict.get('nota_facilităţi', 0) +
+        property_dict.get('nota_curăţenie', 0) +
+        property_dict.get('nota_confort', 0) +
+        property_dict.get('nota_raport_calitate/preţ', 0) +
+        property_dict.get('nota_locaţie', 0) +
+        property_dict.get('nota_wifi_gratuit', 0)
+    ) / 7
+
+    avg_rating = round(avg_rating, 2)
+    property_dict['nota'] = avg_rating
+
+    return jsonify(property_dict), 200
+
+
 @routes_bp.route('/properties/<int:property_id>', methods=['PUT'])
 @jwt_required()
 @check_property_owner
@@ -472,7 +505,6 @@ def update_property(property_id):
     images_to_add = request.files.getlist('images')
     images_to_remove = data.get('remove_images', [])
 
-    # Convertim șirul de imagini la listă, dacă este cazul
     if property_item.images:
         property_item.images = json.loads(property_item.images)
     else:
@@ -489,11 +521,9 @@ def update_property(property_id):
         for image_path in images_to_remove:
             if image_path in property_item.images:
                 property_item.images.remove(image_path)
-                # Optional: șterge fișierul de pe disc
                 if os.path.exists(image_path):
                     os.remove(image_path)
 
-    # Convertim lista de imagini în șir JSON
     property_item.images = json.dumps(property_item.images)
 
     # Updating property fields with received data
@@ -502,14 +532,13 @@ def update_property(property_id):
     property_item.postal_code = data.get('postal_code', property_item.postal_code)
     property_item.country = data.get('country', property_item.country)
     property_item.region = data.get('region', property_item.region)
-    property_item.latitude = data.get('latitude', property_item.latitude)
-    property_item.longitude = data.get('longitude', property_item.longitude)
+    property_item.latitude = float(data.get('latitude', property_item.latitude))
+    property_item.longitude = float(data.get('longitude', property_item.longitude))
     property_item.check_in = data.get('check_in', property_item.check_in)
     property_item.check_out = data.get('check_out', property_item.check_out)
-    property_item.num_reviews = data.get('num_reviews', property_item.num_reviews)
-    property_item.availability = data.get('availability', property_item.availability)
-    property_item.stars = data.get('stars', property_item.stars)
-    property_item.type = data.get('type', property_item.type)
+    property_item.availability = bool(data.get('availability', property_item.availability))
+    property_item.stars = int(data.get('stars', property_item.stars))
+    property_item.type = PropertyType(data.get('type', property_item.type))  # Ensure type is converted to Enum
     property_item.description = data.get('description', property_item.description)
 
     db.session.commit()
@@ -535,11 +564,10 @@ def get_owner_properties():
 @jwt_required()
 @check_property_owner_or_superadmin
 def delete_property(property_id):
-    user_id = get_jwt_identity()
-    property_item = Property.query.get_or_404(property_id)
+    property_item = Property.query.get(property_id)
 
-    if property_item.owner_id != user_id:
-        return jsonify({'message': 'Unauthorized'}), 403
+    if not property_item:
+        return jsonify({'message': 'Property not found'}), 404
 
     db.session.delete(property_item)
     db.session.commit()
@@ -627,7 +655,6 @@ def create_room():
     db.session.commit()  # Confirmăm crearea camerei doar după obținerea ratingului
 
     return jsonify(new_room.to_dict()), 201
-
 
 
 @routes_bp.route('/rooms', methods=['GET'])
