@@ -400,7 +400,7 @@ def filter_properties():
                 property_item.get('nota_facilităţi', 0) +
                 property_item.get('nota_curăţenie', 0) +
                 property_item.get('nota_confort', 0) +
-                property_item.get('nota_raport_calitate/preţ', 0) +
+                property_item.get('nota_raport_calitate_preţ', 0) +
                 property_item.get('nota_locaţie', 0) +
                 property_item.get('nota_wifi_gratuit', 0)
             ) / 7
@@ -416,7 +416,7 @@ def filter_properties():
             'nota_facilităţi': user_preferences.rating_facilities,
             'nota_curăţenie': user_preferences.rating_cleanliness,
             'nota_confort': user_preferences.rating_comfort,
-            'nota_raport_calitate/preţ': user_preferences.rating_value_for_money,
+            'nota_raport_calitate_preţ': user_preferences.rating_value_for_money,
             'nota_locaţie': user_preferences.rating_location,
             'nota_wifi_gratuit': user_preferences.rating_wifi
         }
@@ -469,7 +469,7 @@ def get_property(property_id):
         property_dict.get('nota_facilităţi', 0) +
         property_dict.get('nota_curăţenie', 0) +
         property_dict.get('nota_confort', 0) +
-        property_dict.get('nota_raport_calitate/preţ', 0) +
+        property_dict.get('nota_raport_calitate_preţ', 0) +
         property_dict.get('nota_locaţie', 0) +
         property_dict.get('nota_wifi_gratuit', 0)
     ) / 7

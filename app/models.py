@@ -123,7 +123,7 @@ class Property(db.Model):
             'nota_facilităţi': self.average_rating('rating_facilities'),
             'nota_curăţenie': self.average_rating('rating_cleanliness'),
             'nota_confort': self.average_rating('rating_comfort'),
-            'nota_raport_calitate/preţ': self.average_rating('rating_value_for_money'),
+            'nota_raport_calitate_preţ': self.average_rating('rating_value_for_money'),
             'nota_locaţie': self.average_rating('rating_location'),
             'nota_wifi_gratuit': self.average_rating('rating_wifi')
         }
