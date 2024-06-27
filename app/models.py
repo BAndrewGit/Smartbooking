@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from enum import Enum
 import base64
 import pickle
-import json
+
 
 class PropertyType(Enum):
     HOTEL = "hotel"
@@ -60,10 +60,6 @@ class User(db.Model):
             'created_at': self.created_at.isoformat()
         }
 
-
-from sqlalchemy import JSON, func, Table, Column, Integer, ForeignKey, LargeBinary
-import base64
-import pickle
 
 class Property(db.Model):
     id = db.Column(db.Integer, primary_key=True)
