@@ -49,7 +49,6 @@ def check_property_owner_or_superadmin(f):
     return decorated_function
 
 
-
 def check_property_owner(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -942,7 +941,13 @@ def create_review():
 @routes_bp.route('/properties/<int:property_id>/reviews', methods=['GET'])
 def get_property_reviews(property_id):
     reviews = Review.query.filter_by(property_id=property_id).all()
-    return jsonify([review.to_dict() for review in reviews]), 200
+    reviews_with_users = []
+    for review in reviews:
+        user = User.query.get(review.user_id)
+        review_data = review.to_dict()
+        review_data['user_name'] = user.name  # Assuming `name` is the field for the user's name
+        reviews_with_users.append(review_data)
+    return jsonify(reviews_with_users), 200
 
 
 @routes_bp.route('/reviews/<int:review_id>', methods=['GET'])
@@ -975,8 +980,6 @@ def update_review(review_id):
 def delete_review(review_id):
     user_id = get_jwt_identity()
     review = Review.query.get_or_404(review_id)
-    if review.user_id != user_id:
-        return jsonify({'message': 'Unauthorized'}), 403
     property_id = review.property_id
     db.session.delete(review)
     db.session.commit()
