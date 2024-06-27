@@ -735,6 +735,13 @@ def update_room(room_id):
 
     db.session.commit()
 
+    # Apelarea funcției de predicție a prețului și actualizarea ratingului
+    price_prediction = predict_price_for_room(room.id)
+    if 'error' in price_prediction:
+        return jsonify({'error': price_prediction['error']}), 500
+
+    db.session.commit()
+
     return jsonify(room.to_dict()), 200
 
 
@@ -850,18 +857,29 @@ def stripe_webhook():
     return jsonify({'status': 'success'}), 200
 
 
-@routes_bp.route('/reservations/<int:reservation_id>', methods=['GET'])
+@routes_bp.route('/reservations', methods=['GET'])
 @jwt_required()
-def get_reservation(reservation_id):
+def get_reservations():
     user_id = get_jwt_identity()
     claims = get_jwt()
-    reservation = Reservation.query.get_or_404(reservation_id)
-    property_item = Property.query.get_or_404(reservation.room.property_id)
 
-    if reservation.user_id != user_id and property_item.owner_id != user_id and claims['role'] != 'superadmin':
-        return jsonify({'message': 'Unauthorized'}), 403
+    if claims['role'] == 'owner':
+        properties = Property.query.filter_by(owner_id=user_id).all()
+        property_ids = [property.id for property in properties]
+        reservations = Reservation.query.filter(Reservation.property_id.in_(property_ids)).all()
+    elif claims['role'] == 'superadmin':
+        reservations = Reservation.query.all()
+    else:
+        reservations = Reservation.query.filter_by(user_id=user_id).all()
 
-    return jsonify(reservation.to_dict()), 200
+    reservation_list = []
+    for reservation in reservations:
+        reservation_dict = reservation.to_dict()
+        property_item = Property.query.get(reservation.property_id)
+        reservation_dict['property_name'] = property_item.name
+        reservation_list.append(reservation_dict)
+
+    return jsonify(reservation_list), 200
 
 
 @routes_bp.route('/cancel_reservation/<int:reservation_id>', methods=['POST'])
@@ -874,11 +892,11 @@ def cancel_reservation(reservation_id):
     if reservation.user_id != user_id:
         return jsonify({'message': 'Unauthorized'}), 403
 
-    # Verifică dacă anularea este cu cel puțin 15 de zile înainte de check-in
+    # Check if cancellation is at least 15 days before check-in
     if (reservation.check_in_date - datetime.utcnow()).days < 15:
-        return jsonify({'message': 'Cancellation period has passed'}), 400
+        return jsonify({'message': 'Cancellation period of minimum 15 days has passed'}), 400
 
-    # Returnează banii utilizând Stripe
+    # Refund payment using Stripe
     refund_result = refund_payment(reservation.payment_id)
     if 'error' in refund_result:
         return jsonify({'error': refund_result['error']}), 500
@@ -921,9 +939,9 @@ def create_review():
     return jsonify({'message': 'Review created successfully'}), 201
 
 
-@routes_bp.route('/reviews', methods=['GET'])
-def get_reviews():
-    reviews = Review.query.all()
+@routes_bp.route('/properties/<int:property_id>/reviews', methods=['GET'])
+def get_property_reviews(property_id):
+    reviews = Review.query.filter_by(property_id=property_id).all()
     return jsonify([review.to_dict() for review in reviews]), 200
 
 
