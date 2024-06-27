@@ -242,6 +242,9 @@ class Reservation(db.Model):
     rooms = db.relationship('Room', secondary=reservation_rooms, back_populates='reservations')
 
     def to_dict(self):
+        num_nights = (self.check_out_date - self.check_in_date).days
+        total_price = sum(room.price * num_nights for room in self.rooms)
+
         return {
             'id': self.id,
             'user_id': self.user_id,
@@ -249,7 +252,8 @@ class Reservation(db.Model):
             'rooms': [room.to_dict() for room in self.rooms],
             'check_in_date': self.check_in_date.isoformat(),
             'check_out_date': self.check_out_date.isoformat(),
-            'status': self.status
+            'status': self.status,
+            'total_price': total_price
         }
 
 
