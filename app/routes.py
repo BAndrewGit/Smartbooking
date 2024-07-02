@@ -355,26 +355,34 @@ def filter_properties():
 
     available_properties = properties_query.all()
 
-    def find_rooms_to_accommodate(property_item, num_persons):
+    def find_rooms_to_accommodate(property_item, num_persons, price_max):
         rooms = property_item.rooms
-        selected_rooms = []
-        total_persons = 0
-        total_price = 0.0
+        valid_combinations = []
 
-        for room in sorted(rooms, key=lambda r: r.persons, reverse=True):
-            selected_rooms.append(room)
-            total_persons += room.persons
-            total_price += room.price
-
+        def backtrack(start, selected_rooms, total_persons, total_price):
             if total_persons >= num_persons:
-                return selected_rooms, total_price
+                valid_combinations.append((selected_rooms[:], total_price))
+                return
+            for i in range(start, len(rooms)):
+                room = rooms[i]
+                if total_price + room.price <= price_max:
+                    selected_rooms.append(room)
+                    backtrack(i + 1, selected_rooms, total_persons + room.persons, total_price + room.price)
+                    selected_rooms.pop()
 
-        return selected_rooms if total_persons >= num_persons else None, total_price
+        backtrack(0, [], 0, 0.0)
+        if valid_combinations:
+            return min(valid_combinations, key=lambda x: x[1])  # Returnează combinația cu prețul total cel mai mic
+        return None, float('inf')
 
     result_properties = []
     for property_item in available_properties:
-        rooms, total_price = find_rooms_to_accommodate(property_item, num_persons)
-        if rooms and (price_max is None or total_price <= price_max):
+        if price_max is None:
+            rooms, total_price = find_rooms_to_accommodate(property_item, num_persons, float('inf'))
+        else:
+            rooms, total_price = find_rooms_to_accommodate(property_item, num_persons, price_max)
+
+        if rooms:
             total_persons = sum(room.persons for room in rooms)
             result_properties.append({
                 **property_item.to_dict(),
@@ -395,15 +403,16 @@ def filter_properties():
             return -property_item['total_price']  # Sortare după preț total descrescător
         elif sort_by == 'rating_avg':
             avg_rating = (
-                property_item.get('nota_personal', 0) +
-                property_item.get('nota_facilităţi', 0) +
-                property_item.get('nota_curăţenie', 0) +
-                property_item.get('nota_confort', 0) +
-                property_item.get('nota_raport_calitate_preţ', 0) +
-                property_item.get('nota_locaţie', 0) +
-                property_item.get('nota_wifi_gratuit', 0)
-            ) / 7
-            return -avg_rating if avg_rating is not None else float('inf')  # Sortare după media ratingurilor, descrescător
+                                 property_item.get('nota_personal', 0) +
+                                 property_item.get('nota_facilităţi', 0) +
+                                 property_item.get('nota_curăţenie', 0) +
+                                 property_item.get('nota_confort', 0) +
+                                 property_item.get('nota_raport_calitate_preţ', 0) +
+                                 property_item.get('nota_locaţie', 0) +
+                                 property_item.get('nota_wifi_gratuit', 0)
+                         ) / 7
+            return -avg_rating if avg_rating is not None else float(
+                'inf')  # Sortare după media ratingurilor, descrescător
         else:
             return property_item['id']  # Ordinea implicită
 
@@ -438,7 +447,8 @@ def filter_properties():
         # Sortare cu recomandări prioritizate
         def sort_key_with_recommendations(property_item):
             if property_item['id'] in recommendation_ids:
-                return (0, sort_key(property_item))  # Recomandările sunt sortate primele, cu criteriul de sortare suplimentar
+                return (
+                0, sort_key(property_item))  # Recomandările sunt sortate primele, cu criteriul de sortare suplimentar
             return (1, sort_key(property_item))
 
         sorted_properties = sorted(result_properties, key=sort_key_with_recommendations)
