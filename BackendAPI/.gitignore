@@ -1,0 +1,81 @@
+# Fișiere Python
+*.py[cod]
+__pycache__/
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+migrations/
+*.log
+*.pot
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+*.db
+
+# Setări PyCharm
+.idea/
+*.iml
+*.iws
+
+# Fișiere de configurare PyCharm
+.DS_Store
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Fișiere temporare
+*.swp
+*.swo
+*~
+
+# Fișiere și directoare de virtualenv
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# Fișiere de configurare
+*.env
+*.ini
+*.cfg
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Fișiere create de Flask
+instance/
+.webassets-cache
+
+# Fișiere ale sistemului de operare
+Thumbs.db
+.DS_Store
+
+# Fișiere log
+*.log
+
+# Fișiere de testare
+.coverage
+.tox/
+.nox/
+.pytest_cache/
+.cache/
+
+# Fișiere create de Jupyter Notebook
+.ipynb_checkpoints
+
+# Fișiere create de editori de text
+.vscode/
+
+# Fișiere create de Docker
+docker-compose.override.yml
+
+# Fișiere create de Pyre
+.pyre/
