@@ -6,7 +6,7 @@
 ## Technologies
 - **Backend**: Python, Flask, PostgreSQL, TensorFlow, scikit-learn  
 - **Frontend**: Vue.js, HTML, CSS  
-- **Other Tools**: Git, Docker  
+- **Other Tools**: Git  
 
 ## Project Structure
 ### **BackendAPI (Flask)**
