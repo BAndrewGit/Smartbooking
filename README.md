@@ -41,9 +41,3 @@ Based on **user preferences, search history, and reviews**, Smartbooking suggest
 - **Instant Booking:** A smooth, user-friendly interface allows for quick and easy reservations.  
 - **Secure Transactions:** Built-in security measures ensure safe and reliable payments.  
 
-### 🔹 **Data-Driven Insights**  
-Smartbooking utilizes **real-time analytics** to provide valuable insights for both hosts and users, helping optimize pricing strategies and improve service quality.
-
----
-
-This project aims to enhance the booking experience with the power of AI and modern web technologies, making travel planning smarter and more efficient. 🚀
